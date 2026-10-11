@@ -326,6 +326,10 @@ static void GLW_InitTextureCompression( void )
 		Com_Printf ("...GL_EXT_texture_compression_s3tc available\n" );
 	}
 
+#ifdef OPENJK_GL4ES
+	// iOS spike: no S3TC on iOS GPUs; gl4es only emulates it
+	newer_tc = old_tc = false;
+#endif
 	if ( !r_ext_compressed_textures->value )
 	{
 		// Compressed textures are off
