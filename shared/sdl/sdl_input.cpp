@@ -22,6 +22,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include <SDL.h>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#include "ios/ios_bridge.h"
+#endif
 #endif
 #include "qcommon/qcommon.h"
 #include "qcommon/q_shared.h"
@@ -1186,6 +1189,9 @@ void IN_Frame (void) {
 	else
 		IN_ActivateMouse( );
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	iosTouch_Update( ); // iOS: the touch overlay
+#endif
 	IN_ProcessEvents( );
 }
 

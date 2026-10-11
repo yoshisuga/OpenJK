@@ -149,6 +149,16 @@ if(BuildSPEngine OR BuildJK2SPEngine)
 	source_group("client" FILES ${SPEngineClientFiles})
 	set(SPEngineFiles ${SPEngineFiles} ${SPEngineClientFiles})
 
+	if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+		# iOS: the touch overlay (UIKit) and its bridge into the engine
+		enable_language(OBJC)
+		set(SPEngineFiles ${SPEngineFiles}
+			"${SharedDir}/ios/ios_bridge.cpp"
+			"${SharedDir}/ios/ios_bridge.h"
+			"${SharedDir}/ios/ios_touch.m")
+		set(SPEngineLibraries ${SPEngineLibraries} "-framework UIKit" "-framework QuartzCore")
+	endif()
+
 
 	# qcommon files
 	set(SPEngineCommonFiles
