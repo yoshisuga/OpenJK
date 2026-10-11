@@ -43,7 +43,20 @@ static void APIENTRY_GL4ES R_Gl4esMainFbSize( int *width, int *height )
 	*height = glConfig.vidHeight;
 }
 #define R_GetGLProcAddress( name ) gl4es_GetProcAddress( name )
+// ...and extensions are gl4es's, not the system GL's (which SDL would check)
+static qboolean R_GLExtensionSupported( const char *extension )
+{
+	const char *exts = (const char *)qglGetString( GL_EXTENSIONS );
+	size_t len = strlen( extension );
+	for ( const char *p = exts; p && ( p = strstr( p, extension ) ) != NULL; p += len )
+	{
+		if ( ( p == exts || p[-1] == ' ' ) && ( p[len] == ' ' || p[len] == '\0' ) )
+			return qtrue;
+	}
+	return qfalse;
+}
 #else
+#define R_GLExtensionSupported( name ) ri.GL_ExtensionSupported( name )
 #define R_GetGLProcAddress( name ) ri.GL_GetProcAddress( name )
 #endif
 
@@ -300,8 +313,8 @@ static void GLW_InitTextureCompression( void )
 {
 	bool newer_tc, old_tc;
 	// Check for available tc methods.
-	newer_tc = ri.GL_ExtensionSupported("GL_ARB_texture_compression") && ri.GL_ExtensionSupported("GL_EXT_texture_compression_s3tc");
-	old_tc = ri.GL_ExtensionSupported("GL_S3_s3tc");
+	newer_tc = R_GLExtensionSupported("GL_ARB_texture_compression") && R_GLExtensionSupported("GL_EXT_texture_compression_s3tc");
+	old_tc = R_GLExtensionSupported("GL_S3_s3tc");
 
 	if ( old_tc )
 	{
@@ -425,7 +438,7 @@ static void GLimp_InitExtensions( void )
 
 	// GL_EXT_texture_env_add
 	glConfig.textureEnvAddAvailable = qfalse;
-	if ( ri.GL_ExtensionSupported( "GL_EXT_texture_env_add" ) )
+	if ( R_GLExtensionSupported( "GL_EXT_texture_env_add" ) )
 	{
 		if ( r_ext_texture_env_add->integer )
 		{
@@ -445,7 +458,7 @@ static void GLimp_InitExtensions( void )
 
 	// GL_EXT_texture_filter_anisotropic
 	glConfig.maxTextureFilterAnisotropy = 0;
-	if ( ri.GL_ExtensionSupported( "GL_EXT_texture_filter_anisotropic" ) )
+	if ( R_GLExtensionSupported( "GL_EXT_texture_filter_anisotropic" ) )
 	{
 		qglGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &glConfig.maxTextureFilterAnisotropy );
 		Com_Printf ("...GL_EXT_texture_filter_anisotropic available\n" );
@@ -478,7 +491,7 @@ static void GLimp_InitExtensions( void )
 	qglMultiTexCoord2fARB = NULL;
 	qglActiveTextureARB = NULL;
 	qglClientActiveTextureARB = NULL;
-	if ( ri.GL_ExtensionSupported( "GL_ARB_multitexture" ) )
+	if ( R_GLExtensionSupported( "GL_ARB_multitexture" ) )
 	{
 		if ( r_ext_multitexture->integer )
 		{
@@ -516,7 +529,7 @@ static void GLimp_InitExtensions( void )
 	// GL_EXT_compiled_vertex_array
 	qglLockArraysEXT = NULL;
 	qglUnlockArraysEXT = NULL;
-	if ( ri.GL_ExtensionSupported( "GL_EXT_compiled_vertex_array" ) )
+	if ( R_GLExtensionSupported( "GL_EXT_compiled_vertex_array" ) )
 	{
 		if ( r_ext_compiled_vertex_array->integer )
 		{
@@ -539,7 +552,7 @@ static void GLimp_InitExtensions( void )
 
 	bool bNVRegisterCombiners = false;
 	// Register Combiners.
-	if ( ri.GL_ExtensionSupported( "GL_NV_register_combiners" ) )
+	if ( R_GLExtensionSupported( "GL_NV_register_combiners" ) )
 	{
 		// NOTE: This extension requires multitexture support (over 2 units).
 		if ( glConfig.maxActiveTextures >= 2 )
@@ -592,7 +605,7 @@ static void GLimp_InitExtensions( void )
 
 	// Vertex Programs.
 	bool bARBVertexProgram = false;
-	if ( ri.GL_ExtensionSupported( "GL_ARB_vertex_program" ) )
+	if ( R_GLExtensionSupported( "GL_ARB_vertex_program" ) )
 	{
 		bARBVertexProgram = true;
 	}
@@ -604,7 +617,7 @@ static void GLimp_InitExtensions( void )
 
 	// Fragment Programs.
 	bool bARBFragmentProgram = false;
-	if ( ri.GL_ExtensionSupported( "GL_ARB_fragment_program" ) )
+	if ( R_GLExtensionSupported( "GL_ARB_fragment_program" ) )
 	{
 		bARBFragmentProgram = true;
 	}
@@ -663,7 +676,7 @@ static void GLimp_InitExtensions( void )
 		g_bTextureRectangleHack = true;
 	}
 
-	if ( ri.GL_ExtensionSupported( "GL_NV_texture_rectangle" ) || ri.GL_ExtensionSupported( "GL_EXT_texture_rectangle" ) )
+	if ( R_GLExtensionSupported( "GL_NV_texture_rectangle" ) || R_GLExtensionSupported( "GL_EXT_texture_rectangle" ) )
 	{
 		bTexRectSupported = true;
 	}
