@@ -19,6 +19,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 ===========================================================================
 */
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include "qcommon/qcommon.h"
@@ -571,6 +574,11 @@ static rserr_t GLimp_SetMode(glconfig_t *glConfig, const windowDesc_t *windowDes
 			SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
 			SDL_GL_SetAttribute( SDL_GL_ACCELERATED_VISUAL, !r_allowSoftwareGL->integer );
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+			// iOS spike: landscape only, decided before the window (and its GL
+			// view) exists, so the view doesn't turn round under the GL surface
+			SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" );
+#endif
 			if( ( screen = SDL_CreateWindow( windowTitle, x, y,
 					glConfig->vidWidth, glConfig->vidHeight, flags ) ) == NULL )
 			{
@@ -610,6 +618,13 @@ static rserr_t GLimp_SetMode(glconfig_t *glConfig, const windowDesc_t *windowDes
 				Com_Printf( "SDL_GL_CreateContext failed: %s\n", SDL_GetError( ) );
 				continue;
 			}
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+			// iOS spike: the window always fills the screen, whatever mode was
+			// asked for, so draw to all of it
+			SDL_GL_GetDrawableSize( screen, &glConfig->vidWidth, &glConfig->vidHeight );
+			glConfig->isFullscreen = qtrue;
+			Com_Printf( "iOS: drawing at %d x %d\n", glConfig->vidWidth, glConfig->vidHeight );
+#endif
 
 			if ( SDL_GL_SetSwapInterval( r_swapInterval->integer ) == -1 )
 			{
