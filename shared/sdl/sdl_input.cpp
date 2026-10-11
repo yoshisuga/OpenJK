@@ -20,6 +20,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <SDL.h>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include "qcommon/qcommon.h"
 #include "qcommon/q_shared.h"
 #include "client/client.h"
@@ -628,7 +631,14 @@ void IN_Init( void *windowData )
 	in_mouse = Cvar_Get( "in_mouse", "1", CVAR_ARCHIVE );
 	in_nograb = Cvar_Get( "in_nograb", "0", CVAR_ARCHIVE_ND );
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	// iOS spike: text input on iOS means the on-screen keyboard, over the
+	// game; SDL starts it by default, so stop it. Key presses from a hardware
+	// keyboard still arrive without it.
+	SDL_StopTextInput( );
+#else
 	SDL_StartTextInput( );
+#endif
 
 	mouseAvailable = (qboolean)( in_mouse->value != 0 );
 	if ( in_mouse->integer == 2 ) {
