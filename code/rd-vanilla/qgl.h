@@ -25,6 +25,10 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #if defined( __LINT__ )
 #	include <GL/gl.h>
+#elif defined( OPENJK_GL4ES )
+// iOS spike: gl4es's desktop GL headers, with every GL call renamed onto gl4es
+#	include "gl4es_names.h"
+#	include <GL/gl.h>
 #elif defined( _WIN32 )
 #	include <windows.h>
 #	include <GL/gl.h>

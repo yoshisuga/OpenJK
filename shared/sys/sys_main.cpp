@@ -734,6 +734,22 @@ char *Sys_StripAppBundle( char *dir )
 }
 #endif
 
+#if defined(__APPLE__)
+#	include <TargetConditionals.h>
+#endif
+#if defined(MACOS_X) && TARGET_OS_IPHONE && !defined(DEFAULT_BASEDIR)
+// iOS spike: the game data (base/assets*.pk3) goes in the app's Documents
+// folder, the one the Files app shows; the app bundle is read-only
+static char *Sys_IosDocumentsPath( void )
+{
+	static char path[MAX_OSPATH];
+	const char *home = getenv( "HOME" );
+	Com_sprintf( path, sizeof( path ), "%s/Documents", home ? home : "." );
+	return path;
+}
+#	define DEFAULT_BASEDIR Sys_IosDocumentsPath()
+#endif
+
 #ifndef DEFAULT_BASEDIR
 #	ifdef MACOS_X
 #		define DEFAULT_BASEDIR Sys_StripAppBundle(Sys_BinaryPath())

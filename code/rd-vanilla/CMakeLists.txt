@@ -149,9 +149,18 @@ if(BuildSPRdVanilla OR BuildJK2SPRdVanilla)
 	source_group("rd-common" FILES ${SPRDVanillaRdCommonFiles})
 	set(SPRDVanillaFiles ${SPRDVanillaFiles} ${SPRDVanillaRdCommonFiles})
 
-	find_package(OpenGL REQUIRED)
-	set(SPRDVanillaRendererIncludeDirectories ${SPRDVanillaRendererIncludeDirectories} ${OPENGL_INCLUDE_DIR})
-	set(SPRDVanillaRendererLibraries ${SPRDVanillaRendererLibraries} ${OPENGL_LIBRARIES})
+	if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+		# iOS spike: no desktop OpenGL. gl4es (desktop GL 1.x on OpenGL ES 2),
+		# linked into the renderer only, draws through OpenGLES.framework.
+		set(GL4ES_DIR "" CACHE PATH "gl4es source tree (include/ and lib/libGL.a)")
+		set(SPRDVanillaRendererIncludeDirectories ${SPRDVanillaRendererIncludeDirectories} "${GL4ES_DIR}/include")
+		set(SPRDVanillaRendererLibraries ${SPRDVanillaRendererLibraries} "${GL4ES_DIR}/lib/libGL.a" "-framework OpenGLES")
+		set(SPRDVanillaDefines ${SPRDVanillaDefines} "OPENJK_GL4ES")
+	else()
+		find_package(OpenGL REQUIRED)
+		set(SPRDVanillaRendererIncludeDirectories ${SPRDVanillaRendererIncludeDirectories} ${OPENGL_INCLUDE_DIR})
+		set(SPRDVanillaRendererLibraries ${SPRDVanillaRendererLibraries} ${OPENGL_LIBRARIES})
+	endif()
 
 	set(SPRDVanillaRendererIncludeDirectories ${SPRDVanillaRendererIncludeDirectories} ${OpenJKLibDir})
 

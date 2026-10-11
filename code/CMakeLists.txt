@@ -47,7 +47,7 @@ if(BuildSPEngine OR BuildJK2SPEngine)
 
 	#    Dependencies
 
-	if (NOT WIN32)
+	if (NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS") # iOS spike: GL is the renderer's (gl4es)
 		# OpenGL
 		find_package(OpenGL REQUIRED)
 		set(SPEngineIncludeDirectories ${SPEngineIncludeDirectories} ${OPENGL_INCLUDE_DIR})
@@ -104,6 +104,10 @@ if(BuildSPEngine OR BuildJK2SPEngine)
 			set(SDL2_LIBRARIES SDL2::SDL2)
 		endif()
 		string(STRIP ${SDL2_LIBRARIES} SDL2_LIBRARIES)
+		if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND TARGET SDL2::SDL2main)
+			# iOS spike: SDL's main() starts UIKit, then calls ours (SDL_main)
+			set(SDL2_LIBRARIES SDL2::SDL2main ${SDL2_LIBRARIES})
+		endif()
 		set(SPEngineIncludeDirectories ${SPEngineIncludeDirectories} ${SDL2_INCLUDE_DIRS})
 		set(SPEngineLibraries ${SPEngineLibraries} ${SDL2_LIBRARIES})
 	endif()
