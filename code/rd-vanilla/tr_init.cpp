@@ -1907,6 +1907,12 @@ void RE_Shutdown( qboolean destroyWindow, qboolean restarting ) {
 	// shut down platform specific OpenGL stuff
 	if ( destroyWindow ) {
 		ri.WIN_Shutdown();
+		// The window and its GL context are gone. The renderer is unloaded
+		// next and counts on loading again with these zeroed -- but iOS keeps
+		// it in memory, and with a window size still set, no window (or
+		// context) would be made at all: a black screen. Zero them here.
+		memset( &glConfig, 0, sizeof( glConfig ) );
+		memset( &glState, 0, sizeof( glState ) );
 	}
 	tr.registered = qfalse;
 }

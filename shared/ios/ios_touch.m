@@ -343,10 +343,12 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 	return self;
 }
 
-// Bottom right, under the right thumb: FIRE in the corner, JUMP above it,
-// CROUCH to its left, USE between them on the arc, ALT up and to the right,
-// FORCE left of JUMP. Top left: NEXT WPN, NEXT FORCE, ITEM, VIEW; top right:
-// MENU. All inside the safe area (the cutout, the home bar).
+// Bottom right, under the right thumb, clear of the HUD's right gauge (the
+// bottom right corner of the game's 640x480 screen, x 560-640, y 400-480):
+// FIRE just left of it, CROUCH / USE / JUMP on an arc round FIRE (left, up
+// left, up), ALT above the gauge, FORCE up and left of JUMP, over USE.
+// Top left: NEXT WPN, NEXT FORCE, ITEM, VIEW, GYRO; top right: MENU. All
+// inside the safe area (the cutout, the home bar).
 - (void)layoutSubviews
 {
 	[super layoutSubviews];
@@ -355,10 +357,13 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 	CGFloat left = MAX( in.left, 8.0 ), right = sz.width - MAX( in.right, 8.0 );
 	CGFloat top = MAX( in.top, 8.0 ), bottom = sz.height - MAX( in.bottom, 8.0 );
 
-	CGPoint fire = CGPointMake( right - 60, bottom - 56 );
+	const CGFloat gaugeLeft = sz.width * 560.0 / 640.0;  // the HUD's right gauge
+	const CGFloat gaugeTop = sz.height * 400.0 / 480.0;
+	const CGFloat FR = iosTouch_aButtons[BTN_FIRE].radius;
+	CGPoint fire = CGPointMake( MIN( gaugeLeft - FR - 8, right - FR ), bottom - FR - 10 );
 	iosTouch_aButtons[BTN_FIRE].x = fire.x;
 	iosTouch_aButtons[BTN_FIRE].y = fire.y;
-	const CGFloat arc = 112.0;
+	const CGFloat arc = 108.0;
 	const int aArc[3] = { BTN_CROUCH, BTN_USE, BTN_JUMP };
 	const CGFloat aDeg[3] = { 180.0, 135.0, 90.0 };
 	for ( int i = 0; i < 3; i++ ) {
@@ -366,10 +371,15 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 		iosTouch_aButtons[aArc[i]].x = fire.x + arc * cos( rad );
 		iosTouch_aButtons[aArc[i]].y = fire.y - arc * sin( rad );
 	}
-	iosTouch_aButtons[BTN_ALT].x = MIN( fire.x + 50, right - iosTouch_aButtons[BTN_ALT].radius );
-	iosTouch_aButtons[BTN_ALT].y = fire.y - 95;
-	iosTouch_aButtons[BTN_FORCE].x = iosTouch_aButtons[BTN_JUMP].x - 80;
-	iosTouch_aButtons[BTN_FORCE].y = iosTouch_aButtons[BTN_JUMP].y - 30;
+	// ALT above the gauge, its centre over the gauge's middle (inside the
+	// screen's right edge), level with JUMP: far enough right of it not to touch
+	const CGFloat AR = iosTouch_aButtons[BTN_ALT].radius;
+	iosTouch_aButtons[BTN_ALT].x = MIN( MAX( ( gaugeLeft + sz.width ) * 0.5, iosTouch_aButtons[BTN_JUMP].x + iosTouch_aButtons[BTN_JUMP].radius + AR + 24 ),
+	                                    right - AR );
+	iosTouch_aButtons[BTN_ALT].y = MIN( iosTouch_aButtons[BTN_JUMP].y, gaugeTop - AR - 10 );
+	// FORCE up and left of JUMP, over USE
+	iosTouch_aButtons[BTN_FORCE].x = iosTouch_aButtons[BTN_USE].x - 20;
+	iosTouch_aButtons[BTN_FORCE].y = iosTouch_aButtons[BTN_JUMP].y - 72;
 
 	const int aTopLeft[5] = { BTN_NEXTWPN, BTN_NEXTFORCE, BTN_ITEM, BTN_VIEW, BTN_GYRO };
 	for ( int i = 0; i < 5; i++ ) {
