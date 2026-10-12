@@ -222,6 +222,9 @@ static consoleCommand_t	commands[] = {
 #endif
 	{ "invnext", CG_NextInventory_f },
 	{ "invprev", CG_PrevInventory_f },
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	{ "invselect", CG_SelectInventory_f },	// iOS: the touch overlay's item wheel
+#endif
 	{ "la_zoom", CG_ToggleLAGoggles },
 	{ "loadhud", CG_LoadHud_f },
 	{ "lock_disable", Lock_Disable },	//player can move now

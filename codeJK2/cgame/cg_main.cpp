@@ -3347,8 +3347,28 @@ void CG_SelectForcePower_f( void )
 	cgi_S_StartSound( NULL, 0, CHAN_AUTO, cgs.media.selectSound2 );
 }
 
+// "invselect <n>": selects inventory item n (INV_ELECTROBINOCULARS..
+// INV_SENTRY), if carried, as invnext would (for the item wheel)
+void CG_SelectInventory_f( void )
+{
+	if ( !cg.snap )
+	{
+		return;
+	}
+	const int n = atoi( CG_Argv( 1 ) );
+	if ( n < INV_ELECTROBINOCULARS || n > INV_SENTRY || !cg.snap->ps.inventory[n] )
+	{
+		return;
+	}
+	cg.inventorySelect = n;
+	SetInventoryTime();	// shows the HUD's inventory for a moment
+	cgi_S_StartSound( NULL, 0, CHAN_AUTO, cgs.media.selectSound2 );
+}
+
 // "<learned mask> <selected> <level 0> ... <level 6>", the indexes being
-// showPowers', set only when it changes
+// showPowers', set only when it changes; and cg_iosinv, "<carried mask>
+// <selected> <count 0> ... <count 4>" for the items INV_ELECTROBINOCULARS..
+// INV_SENTRY
 void CG_IosUpdateForceInfo( void )
 {
 	static char last[64];
@@ -3376,6 +3396,26 @@ void CG_IosUpdateForceInfo( void )
 	{
 		Q_strncpyz( last, buf, sizeof( last ) );
 		cgi_Cvar_Set( "cg_iosforce", buf );
+	}
+
+	static char lastInv[64];
+	int carried = 0;
+	for ( int i = INV_ELECTROBINOCULARS; i <= INV_SENTRY; i++ )
+	{
+		if ( cg.snap->ps.inventory[i] )
+		{
+			carried |= 1 << i;
+		}
+	}
+	Com_sprintf( buf, sizeof( buf ), "%d %d", carried, cg.inventorySelect );
+	for ( int i = INV_ELECTROBINOCULARS; i <= INV_SENTRY; i++ )
+	{
+		Q_strcat( buf, sizeof( buf ), va( " %d", cg.snap->ps.inventory[i] ) );
+	}
+	if ( strcmp( buf, lastInv ) )
+	{
+		Q_strncpyz( lastInv, buf, sizeof( lastInv ) );
+		cgi_Cvar_Set( "cg_iosinv", buf );
 	}
 }
 #endif

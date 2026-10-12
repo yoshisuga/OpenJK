@@ -7,7 +7,7 @@
 //     aiming
 //   - bottom right: FIRE (+attack), ALT (+altattack), JUMP (+moveup),
 //     CROUCH (+movedown), USE (+use), FORCE (+useforce, the selected power)
-//   - top left: NEXT WPN (weapnext), FORCE WHEEL (see below), ITEM (invuse),
+//   - top left: NEXT WPN (weapnext), FORCE WHEEL and ITEM (see below),
 //     VIEW (cg_thirdperson !), GYRO; top right: QUICK SAVE, QUICK LOAD and
 //     MENU (Escape, which also skips an in-game cutscene)
 //   - QUICK SAVE and QUICK LOAD only go off when held: a ring round the
@@ -26,6 +26,11 @@
 //     change. After a hold the wheel stays open: tap a power, or anywhere
 //     else to close it. The game tells the overlay which powers are learned
 //     (cg_iosforce) and selects one with "forceselect".
+//   - ITEM: a quick tap uses the selected item (invuse); a slide or a hold
+//     opens the item wheel, the same way: the five usable items across the
+//     top (binoculars, bacta, seeker, light amp goggles, sentry), dimmed when
+//     not carried, with how many; lifting on one selects it and uses it
+//     ("invselect", then invuse). The game tells it what's carried (cg_iosinv).
 //   - GYRO turns gyro aiming on or off (lit while on, remembered between
 //     launches): turning the phone turns the view too, along with dragging.
 //     It runs only while a level is being played.
@@ -88,11 +93,11 @@
 // The wheel's slices, in the game's showPowers order (forceselect's index):
 // the middle of each, degrees counter-clockwise from pointing right (90: up),
 // each IOSTOUCH_WHEEL_SLICE_DEG wide, and its group's colour
-#define IOSTOUCH_WHEEL_POWERS 7
+#define IOSTOUCH_WHEEL_MAX 7
 #define IOSTOUCH_WHEEL_SLICE_DEG 32.0
 #define IOSTOUCH_WHEEL_GAP_DEG 4.0
 typedef struct { const char *name; float deg; unsigned char r, g, b; } iosTouchWheelSlice;
-static const iosTouchWheelSlice iosTouch_aWheel[IOSTOUCH_WHEEL_POWERS] = {
+static const iosTouchWheelSlice iosTouch_aForceSlices[] = {
 	{ "HEAL",       198.0f, 120, 200, 255 }, // light side, down the left
 	{ "SPEED",      126.0f, 255, 214, 120 }, // neutral, across the top
 	{ "PUSH",        90.0f, 255, 214, 120 },
@@ -100,6 +105,38 @@ static const iosTouchWheelSlice iosTouch_aWheel[IOSTOUCH_WHEEL_POWERS] = {
 	{ "MIND\nTRICK", 162.0f, 120, 200, 255 },
 	{ "GRIP",        18.0f, 255, 105,  90 }, // dark side, down the right
 	{ "LIGHTNING",  -18.0f, 255, 105,  90 },
+};
+// The items, in the game's order (INV_ELECTROBINOCULARS..INV_SENTRY: invselect's index)
+static const iosTouchWheelSlice iosTouch_aItemSlices[] = {
+	{ "BINOCU-\nLARS", 162.0f, 140, 220, 160 },
+	{ "BACTA",         126.0f, 140, 220, 160 },
+	{ "SEEKER",         90.0f, 140, 220, 160 },
+	{ "LIGHT\nAMP",     54.0f, 140, 220, 160 },
+	{ "SENTRY",         18.0f, 140, 220, 160 },
+};
+// A wheel: its slices; how the game says what's there (a cvar, "<mask>
+// <selected> <value per slice>", values being levels or counts); the command
+// that selects a slice (by index); what else lifting on one does
+typedef struct {
+	const iosTouchWheelSlice *aSlices;
+	int numSlices;
+	const char *infoCvar;
+	const char *selectCmd;
+	const char *afterSelect; // a command line, or NULL
+	int bCounts;             // values are counts (else levels: stars)
+	const char *title;       // in the middle when nothing is selected
+	const char *notThere;    // a slice not available: "not learned yet"
+	const char *liftHint;    // "lift to select"
+	const char *emptyTitle, *emptyHint;
+} iosTouchWheelMap;
+#define IOSTOUCH_COUNT( a ) ( (int)( sizeof( a ) / sizeof( ( a )[0] ) ) )
+static const iosTouchWheelMap iosTouch_forceWheel = {
+	iosTouch_aForceSlices, IOSTOUCH_COUNT( iosTouch_aForceSlices ), "cg_iosforce", "forceselect", NULL, 0,
+	"FORCE", "not learned yet", "lift to select", "NO POWERS", "none learned yet"
+};
+static const iosTouchWheelMap iosTouch_itemWheel = {
+	iosTouch_aItemSlices, IOSTOUCH_COUNT( iosTouch_aItemSlices ), "cg_iosinv", "invselect", "invuse\n", 1,
+	"ITEMS", "not carried", "lift to use", "NO ITEMS", "none carried"
 };
 
 enum { KIND_HOLD, KIND_TAP, KIND_MENU, KIND_GYRO, KIND_QUICK, KIND_WHEEL };
@@ -128,7 +165,7 @@ static iosTouchButton iosTouch_aButtons[BTN_COUNT] = {
 	[BTN_FORCE]     = { "FORCE",       KIND_HOLD, "+useforce",  30.0f, 0 },
 	[BTN_NEXTWPN]   = { "NEXT\nWPN",   KIND_TAP,  "weapnext\n", 22.0f, 0 },
 	[BTN_WHEEL]     = { "FORCE\nWHEEL", KIND_WHEEL, "forcenext\n", 22.0f, 0 },
-	[BTN_ITEM]      = { "ITEM",        KIND_TAP,  "invuse\n",   22.0f, 0 },
+	[BTN_ITEM]      = { "ITEM",        KIND_WHEEL, "invuse\n",  22.0f, 0 },
 	[BTN_VIEW]      = { "VIEW",        KIND_TAP,  "cg_thirdperson !\n", 22.0f, 0 },
 	[BTN_GYRO]      = { "GYRO",        KIND_GYRO, NULL,         22.0f, 0 },
 	[BTN_QUICKSAVE] = { "QUICK\nSAVE", KIND_QUICK, "save quik*\n", 22.0f, 0 },
@@ -165,10 +202,10 @@ static CGFloat iosTouch_AngleDiff( CGFloat a, CGFloat b )
 }
 
 // The slice a direction (degrees) points into, or IOSTOUCH_WHEEL_CANCEL
-static int iosTouch_WheelSliceForAngle( CGFloat deg )
+static int iosTouch_WheelSliceForAngle( const iosTouchWheelMap *m, CGFloat deg )
 {
-	for ( int i = 0; i < IOSTOUCH_WHEEL_POWERS; i++ ) {
-		if ( fabs( iosTouch_AngleDiff( deg, iosTouch_aWheel[i].deg ) ) <= ( IOSTOUCH_WHEEL_SLICE_DEG + IOSTOUCH_WHEEL_GAP_DEG ) * 0.5 )
+	for ( int i = 0; i < m->numSlices; i++ ) {
+		if ( fabs( iosTouch_AngleDiff( deg, m->aSlices[i].deg ) ) <= ( IOSTOUCH_WHEEL_SLICE_DEG + IOSTOUCH_WHEEL_GAP_DEG ) * 0.5 )
 			return i;
 	}
 	return IOSTOUCH_WHEEL_CANCEL;
@@ -351,13 +388,14 @@ static void iosTouch_UpdateGyro( int bPlaying, UIView *v )
 	int bWheelOpen;
 	int bWheelTapMode;
 	UIView *wheelView;
-	CAShapeLayer *aSliceLayers[IOSTOUCH_WHEEL_POWERS];
-	UILabel *aSliceLabels[IOSTOUCH_WHEEL_POWERS];
+	const iosTouchWheelMap *pWheel; // which wheel is open
+	CAShapeLayer *aSliceLayers[IOSTOUCH_WHEEL_MAX];
+	UILabel *aSliceLabels[IOSTOUCH_WHEEL_MAX];
 	UILabel *wheelTitle;
 	UILabel *wheelHint;
 	CGPoint wheelCentre;
 	CGFloat wheelR0, wheelR1;
-	int wheelLearned, wheelSelected, aWheelLevels[IOSTOUCH_WHEEL_POWERS];
+	int wheelLearned, wheelSelected, aWheelLevels[IOSTOUCH_WHEEL_MAX]; // learned / carried, selected, levels / counts
 	int wheelLastHot;
 	UISelectionFeedbackGenerator *wheelTick;
 	CAShapeLayer *aQuickRings[BTN_COUNT]; // KIND_QUICK: fills while held
@@ -450,7 +488,7 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 		wheelView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.45];
 		wheelView.userInteractionEnabled = NO; // the overlay takes its touches
 		wheelView.hidden = YES;
-		for ( int i = 0; i < IOSTOUCH_WHEEL_POWERS; i++ ) {
+		for ( int i = 0; i < IOSTOUCH_WHEEL_MAX; i++ ) {
 			aSliceLayers[i] = [CAShapeLayer layer];
 			aSliceLayers[i].lineWidth = 2.0;
 			[wheelView.layer addSublayer:aSliceLayers[i]];
@@ -614,7 +652,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 	CGFloat dx = p.x - wheelCentre.x, dy = wheelCentre.y - p.y;
 	CGFloat r = sqrt( dx * dx + dy * dy );
 	if ( r < wheelR0 - 4.0 || r > wheelR1 + 24.0 ) return -1;
-	return iosTouch_WheelSliceForAngle( atan2( dy, dx ) * 180.0 / M_PI );
+	return iosTouch_WheelSliceForAngle( pWheel, atan2( dy, dx ) * 180.0 / M_PI );
 }
 
 // Round the middle of the safe area, as big as fits
@@ -626,8 +664,10 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 	wheelCentre = CGPointMake( sz.width * 0.5, ( top + bottom ) * 0.5 );
 	wheelR1 = MIN( 160.0, ( bottom - top ) * 0.5 - 10.0 );
 	wheelR0 = round( wheelR1 * 0.37 );
-	for ( int i = 0; i < IOSTOUCH_WHEEL_POWERS; i++ ) {
-		CGFloat a = iosTouch_aWheel[i].deg * M_PI / 180.0;
+	for ( int i = 0; i < IOSTOUCH_WHEEL_MAX; i++ ) {
+		aSliceLayers[i].hidden = aSliceLabels[i].hidden = i >= pWheel->numSlices;
+		if ( i >= pWheel->numSlices ) continue;
+		CGFloat a = pWheel->aSlices[i].deg * M_PI / 180.0;
 		CGFloat r = ( wheelR0 + wheelR1 ) * 0.5 + 4.0;
 		aSliceLabels[i].center = CGPointMake( wheelCentre.x + r * cos( a ), wheelCentre.y - r * sin( a ) );
 	}
@@ -654,8 +694,8 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 	}
 	[CATransaction begin];
 	[CATransaction setDisableActions:YES];
-	for ( int i = 0; i < IOSTOUCH_WHEEL_POWERS; i++ ) {
-		const iosTouchWheelSlice *sl = &iosTouch_aWheel[i];
+	for ( int i = 0; i < pWheel->numSlices; i++ ) {
+		const iosTouchWheelSlice *sl = &pWheel->aSlices[i];
 		int bLearned = ( wheelLearned >> i ) & 1;
 		int bHot = i == hot;
 		CGFloat half = IOSTOUCH_WHEEL_SLICE_DEG * 0.5;
@@ -678,29 +718,31 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 			aSliceLabels[i].textColor = [UIColor whiteColor];
 		}
 		aSliceLayers[i].lineWidth = ( bHot || i == wheelSelected ) ? 3.0 : 2.0;
-		// the name, and a star per level learned
+		// the name, and a star per level learned, or how many are carried
 		NSString *name = [NSString stringWithUTF8String:sl->name];
-		int level = MAX( 0, MIN( 3, aWheelLevels[i] ) );
-		aSliceLabels[i].text = bLearned ? [NSString stringWithFormat:@"%@\n%@", name, [@"★★★" substringToIndex:level]] : name;
+		if ( !bLearned ) aSliceLabels[i].text = name;
+		else if ( pWheel->bCounts ) aSliceLabels[i].text = aWheelLevels[i] > 1 ? [NSString stringWithFormat:@"%@\n×%d", name, aWheelLevels[i]] : name;
+		else aSliceLabels[i].text = [NSString stringWithFormat:@"%@\n%@", name, [@"★★★" substringToIndex:MAX( 0, MIN( 3, aWheelLevels[i] ) )]];
 	}
 	[CATransaction commit];
 
 	if ( hot >= 0 ) {
-		wheelTitle.text = [[NSString stringWithUTF8String:iosTouch_aWheel[hot].name] stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
-		wheelHint.text = ( ( wheelLearned >> hot ) & 1 ) ? @"lift to select" : @"not learned yet";
+		wheelTitle.text = [[[NSString stringWithUTF8String:pWheel->aSlices[hot].name] stringByReplacingOccurrencesOfString:@"-\n" withString:@""] stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+		wheelHint.text = [NSString stringWithUTF8String:( ( wheelLearned >> hot ) & 1 ) ? pWheel->liftHint : pWheel->notThere];
 	}
 	else if ( bCancel ) {
 		wheelTitle.text = @"CANCEL";
 		wheelHint.text = @"lift to cancel";
 	}
 	else if ( !wheelLearned ) {
-		wheelTitle.text = @"NO POWERS";
-		wheelHint.text = @"none learned yet";
+		wheelTitle.text = [NSString stringWithUTF8String:pWheel->emptyTitle];
+		wheelHint.text = [NSString stringWithUTF8String:pWheel->emptyHint];
 	}
 	else {
-		int sel = ( wheelSelected >= 0 && wheelSelected < IOSTOUCH_WHEEL_POWERS ) ? wheelSelected : -1;
-		wheelTitle.text = sel >= 0 ? [[NSString stringWithUTF8String:iosTouch_aWheel[sel].name] stringByReplacingOccurrencesOfString:@"\n" withString:@" "] : @"FORCE";
-		wheelHint.text = bWheelTapMode ? @"tap a power" : @"slide toward a power";
+		int sel = ( wheelSelected >= 0 && wheelSelected < pWheel->numSlices && ( ( wheelLearned >> wheelSelected ) & 1 ) ) ? wheelSelected : -1;
+		wheelTitle.text = sel >= 0 ? [[[NSString stringWithUTF8String:pWheel->aSlices[sel].name] stringByReplacingOccurrencesOfString:@"-\n" withString:@""] stringByReplacingOccurrencesOfString:@"\n" withString:@" "]
+		                           : [NSString stringWithUTF8String:pWheel->title];
+		wheelHint.text = bWheelTapMode ? @"tap one" : @"slide toward one";
 	}
 	wheelTitle.textColor = [UIColor whiteColor];
 	if ( hot != wheelLastHot ) {
@@ -713,6 +755,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 // until it lifts; the opener (if sliding) points by direction
 - (void)openWheelWithOpener:(iosTouchSlot *)opener tapMode:(int)bTap
 {
+	pWheel = ( opener && opener->button == BTN_ITEM ) ? &iosTouch_itemWheel : &iosTouch_forceWheel;
 	for ( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ ) {
 		iosTouchSlot *s = &iosTouch_aSlots[i];
 		if ( !s->touch || s == opener ) continue;
@@ -728,7 +771,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 		}
 		s->role = ROLE_IGNORED;
 	}
-	if ( !iosJK_GetForceInfo( &wheelLearned, &wheelSelected, aWheelLevels ) ) {
+	if ( !iosJK_GetWheelInfo( pWheel->infoCvar, &wheelLearned, &wheelSelected, aWheelLevels, pWheel->numSlices ) ) {
 		wheelLearned = 0;
 		wheelSelected = -1;
 	}
@@ -750,10 +793,11 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 // Closes the wheel, selecting slice if it's a learned power
 - (void)closeWheelSelecting:(int)slice
 {
-	if ( slice >= 0 && slice < IOSTOUCH_WHEEL_POWERS && ( ( wheelLearned >> slice ) & 1 ) ) {
+	if ( pWheel && slice >= 0 && slice < pWheel->numSlices && ( ( wheelLearned >> slice ) & 1 ) ) {
 		char line[32];
-		snprintf( line, sizeof( line ), "forceselect %d\n", slice );
+		snprintf( line, sizeof( line ), "%s %d\n", pWheel->selectCmd, slice );
 		iosJK_Command( line );
+		if ( pWheel->afterSelect ) iosJK_Command( pWheel->afterSelect );
 	}
 	for ( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ ) {
 		if ( iosTouch_aSlots[i].touch && iosTouch_aSlots[i].role == ROLE_WHEEL ) iosTouch_aSlots[i].role = ROLE_IGNORED;
@@ -777,7 +821,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 		s->wheelSlot = -1;
 		return;
 	}
-	s->wheelSlot = iosTouch_WheelSliceForAngle( atan2( dy, dx ) * 180.0 / M_PI );
+	s->wheelSlot = iosTouch_WheelSliceForAngle( pWheel, atan2( dy, dx ) * 180.0 / M_PI );
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
@@ -823,7 +867,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 			continue;
 		}
 		s->button = [self buttonAt:p];
-		if ( s->button == BTN_WHEEL ) {
+		if ( s->button >= 0 && iosTouch_aButtons[s->button].kind == KIND_WHEEL ) {
 			s->role = ROLE_WHEELBTN;
 			[self setButton:s->button held:1];
 		}
@@ -858,7 +902,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 			else if ( s->role == ROLE_WHEELBTN ) {
 				// slid out of FORCE WHEEL: the wheel opens, pointing the slide's way
 				if ( hypot( p.x - s->origin.x, p.y - s->origin.y ) >= IOSTOUCH_WHEEL_DEAD ) {
-					[self setButton:BTN_WHEEL held:0];
+					[self setButton:s->button held:0];
 					[self openWheelWithOpener:s tapMode:0];
 					[self aimWheel:s at:p];
 					[self refreshWheel];
@@ -902,9 +946,9 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 			if ( s->touch != t ) continue;
 			CGPoint p = [t locationInView:self];
 			if ( s->role == ROLE_WHEELBTN ) {
-				// a quick tap: the next learned power
-				[self setButton:BTN_WHEEL held:0];
-				iosJK_Command( iosTouch_aButtons[BTN_WHEEL].command );
+				// a quick tap: the next learned power / uses the selected item
+				[self setButton:s->button held:0];
+				iosJK_Command( iosTouch_aButtons[s->button].command );
 			}
 			else if ( s->role == ROLE_WHEEL && bWheelOpen ) {
 				if ( s->bOpener ) {
@@ -960,7 +1004,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 	for ( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ ) {
 		iosTouchSlot *s = &iosTouch_aSlots[i];
 		if ( s->touch && s->role == ROLE_WHEELBTN && now - s->tDown >= IOSTOUCH_WHEEL_HOLD ) {
-			[self setButton:BTN_WHEEL held:0];
+			[self setButton:s->button held:0];
 			[self openWheelWithOpener:s tapMode:1];
 		}
 	}

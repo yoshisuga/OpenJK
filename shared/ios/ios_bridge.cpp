@@ -44,19 +44,22 @@ void iosJK_MenuButton( int bDown )
 	Sys_QueEvent( 0, SE_KEY, A_MOUSE1, bDown ? qtrue : qfalse, 0, NULL );
 }
 
-int iosJK_GetForceInfo( int *pLearned, int *pSelected, int *aLevels )
+int iosJK_GetWheelInfo( const char *cvar, int *pMask, int *pSelected, int *aValues, int numValues )
 {
-	// cg_iosforce, set by the game (CG_IosUpdateForceInfo):
-	// "<learned mask> <selected> <level 0> ... <level 6>"
-	const char *s = Cvar_VariableString( "cg_iosforce" );
-	int v[9] = { 0 };
-	int n = sscanf( s, "%d %d %d %d %d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7], &v[8] );
-	if ( n < 2 )
+	// set by the game (CG_IosUpdateForceInfo): "<mask> <selected> <value> ..."
+	const char *s = Cvar_VariableString( cvar );
+	char *end;
+	long v = strtol( s, &end, 10 );
+	if ( end == s )
 		return 0;
-	*pLearned = v[0];
-	*pSelected = v[1];
-	for ( int i = 0; i < 7; i++ )
-		aLevels[i] = v[2 + i];
+	*pMask = (int)v;
+	s = end;
+	*pSelected = (int)strtol( s, &end, 10 );
+	s = end;
+	for ( int i = 0; i < numValues; i++ ) {
+		aValues[i] = (int)strtol( s, &end, 10 );
+		s = end;
+	}
 	return 1;
 }
 

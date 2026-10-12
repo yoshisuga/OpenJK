@@ -511,6 +511,7 @@ extern char *showPowersName[MAX_SHOWPOWERS];
 #if TARGET_OS_IPHONE
 void CG_SelectForcePower_f( void );	// iOS: the touch overlay's force wheel
 void CG_IosUpdateForceInfo( void );
+void CG_SelectInventory_f( void );	// iOS: the touch overlay's item wheel
 #endif
 #endif
 extern int force_icons[NUM_FORCE_POWERS];
