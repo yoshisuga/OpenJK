@@ -28,7 +28,6 @@ int iosJK_InMenu( void )
 
 void iosJK_Command( const char *text )
 {
-	Com_Printf( "iOS touch: %s", text ); // spike diagnostic
 	Cbuf_AddText( text );
 }
 
