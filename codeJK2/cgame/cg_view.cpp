@@ -1817,6 +1817,9 @@ extern void CG_BuildSolidList( void );
 void cgi_CM_SnapPVS(vec3_t origin,byte *buffer);
 extern vec3_t	serverViewOrg;
 void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	CG_IosUpdateForceInfo();	// iOS: for the touch overlay's force wheel
+#endif
 	qboolean	inwater = qfalse;
 
 	cg.time = serverTime;

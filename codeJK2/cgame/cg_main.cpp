@@ -22,6 +22,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "cg_local.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include "cg_media.h"
 #include "FxScheduler.h"
 
@@ -3318,6 +3321,64 @@ void CG_PrevForcePower_f( void )
 
 	cg.forcepowerSelect = original;
 }
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+/*
+===============
+iOS: for the touch overlay's force wheel (shared/ios/ios_touch.m), which is
+in the engine and can't see cg: "forceselect <n>" selects showPowers[n], if
+learned, as forcenext would; and cg_iosforce tells it which powers are
+learned, which is selected and how far each is learned
+===============
+*/
+void CG_SelectForcePower_f( void )
+{
+	if ( !cg.snap )
+	{
+		return;
+	}
+	const int n = atoi( CG_Argv( 1 ) );
+	if ( n < 0 || n >= MAX_SHOWPOWERS || !ForcePower_Valid( n ) )
+	{
+		return;
+	}
+	cg.forcepowerSelect = n;
+	SetForcePowerTime();	// shows the HUD's force selection for a moment
+	cgi_S_StartSound( NULL, 0, CHAN_AUTO, cgs.media.selectSound2 );
+}
+
+// "<learned mask> <selected> <level 0> ... <level 6>", the indexes being
+// showPowers', set only when it changes
+void CG_IosUpdateForceInfo( void )
+{
+	static char last[64];
+	char buf[64];
+	gentity_t *player = &g_entities[0];
+
+	if ( !cg.snap || !player->client )
+	{
+		return;
+	}
+	int mask = 0;
+	for ( int i = 0; i < MAX_SHOWPOWERS; i++ )
+	{
+		if ( ForcePower_Valid( i ) )
+		{
+			mask |= 1 << i;
+		}
+	}
+	Com_sprintf( buf, sizeof( buf ), "%d %d", mask, cg.forcepowerSelect );
+	for ( int i = 0; i < MAX_SHOWPOWERS; i++ )
+	{
+		Q_strcat( buf, sizeof( buf ), va( " %d", player->client->ps.forcePowerLevel[showPowers[i]] ) );
+	}
+	if ( strcmp( buf, last ) )
+	{
+		Q_strncpyz( last, buf, sizeof( last ) );
+		cgi_Cvar_Set( "cg_iosforce", buf );
+	}
+}
+#endif
 
 /*
 ===================

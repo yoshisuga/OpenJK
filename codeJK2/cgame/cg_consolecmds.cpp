@@ -25,6 +25,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 // executed by a key binding
 
 #include "cg_local.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include "cg_media.h"	//just for cgs....
 
 void CG_TargetCommand_f( void );
@@ -214,6 +217,9 @@ static consoleCommand_t	commands[] = {
 	{ "dpweapprev", CG_DPPrevWeapon_f },
 	{ "forcenext", CG_NextForcePower_f },
 	{ "forceprev", CG_PrevForcePower_f },
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	{ "forceselect", CG_SelectForcePower_f },	// iOS: the touch overlay's force wheel
+#endif
 	{ "invnext", CG_NextInventory_f },
 	{ "invprev", CG_PrevInventory_f },
 	{ "la_zoom", CG_ToggleLAGoggles },

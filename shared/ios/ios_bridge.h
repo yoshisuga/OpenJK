@@ -17,6 +17,11 @@ void iosJK_MenuPointer( int x, int y );
 void iosJK_MenuButton( int bDown );
 // Adds a command line ("+attack 1000\n") to the command buffer
 void iosJK_Command( const char *text );
+// The selectable force powers (the game's showPowers order: heal, speed,
+// push, pull, mind trick, grip, lightning): which are learned (a mask),
+// which is selected, and each one's level. 0 if the game hasn't said yet.
+// "forceselect <n>\n" selects one.
+int iosJK_GetForceInfo( int *pLearned, int *pSelected, int *aLevels );
 // How far one count of mouse movement turns the view, in degrees (right per
 // count right; down per count down -- negative if the mouse is inverted).
 // Read each frame: the settings can change, and zooming lowers it

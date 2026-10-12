@@ -506,6 +506,13 @@ Ghoul2 Insert End
 #define MAX_SHOWPOWERS 7
 extern int showPowers[MAX_SHOWPOWERS];
 extern char *showPowersName[MAX_SHOWPOWERS];
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+void CG_SelectForcePower_f( void );	// iOS: the touch overlay's force wheel
+void CG_IosUpdateForceInfo( void );
+#endif
+#endif
 extern int force_icons[NUM_FORCE_POWERS];
 #define MAX_DPSHOWPOWERS 11
 

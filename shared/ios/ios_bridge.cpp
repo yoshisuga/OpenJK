@@ -44,6 +44,22 @@ void iosJK_MenuButton( int bDown )
 	Sys_QueEvent( 0, SE_KEY, A_MOUSE1, bDown ? qtrue : qfalse, 0, NULL );
 }
 
+int iosJK_GetForceInfo( int *pLearned, int *pSelected, int *aLevels )
+{
+	// cg_iosforce, set by the game (CG_IosUpdateForceInfo):
+	// "<learned mask> <selected> <level 0> ... <level 6>"
+	const char *s = Cvar_VariableString( "cg_iosforce" );
+	int v[9] = { 0 };
+	int n = sscanf( s, "%d %d %d %d %d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7], &v[8] );
+	if ( n < 2 )
+		return 0;
+	*pLearned = v[0];
+	*pSelected = v[1];
+	for ( int i = 0; i < 7; i++ )
+		aLevels[i] = v[2 + i];
+	return 1;
+}
+
 void iosJK_GetMouseDegrees( float *pYaw, float *pPitch )
 {
 	// as CL_MouseMove turns the view: degrees per count of mouse movement
