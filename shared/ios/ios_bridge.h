@@ -17,6 +17,10 @@ void iosJK_MenuPointer( int x, int y );
 void iosJK_MenuButton( int bDown );
 // Adds a command line ("+attack 1000\n") to the command buffer
 void iosJK_Command( const char *text );
+// How far one count of mouse movement turns the view, in degrees (right per
+// count right; down per count down -- negative if the mouse is inverted).
+// Read each frame: the settings can change, and zooming lowers it
+void iosJK_GetMouseDegrees( float *pYaw, float *pPitch );
 // Turns the view, as mouse movement
 void iosJK_Look( int dx, int dy );
 // One press of Escape: the menu, or skips a cutscene or video

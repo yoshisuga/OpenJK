@@ -45,6 +45,15 @@ void iosJK_MenuButton( int bDown )
 	Sys_QueEvent( 0, SE_KEY, A_MOUSE1, bDown ? qtrue : qfalse, 0, NULL );
 }
 
+void iosJK_GetMouseDegrees( float *pYaw, float *pPitch )
+{
+	// as CL_MouseMove turns the view: degrees per count of mouse movement
+	// (cgameSensitivity: less while zoomed)
+	const float s = cl_sensitivity->value * cl.cgameSensitivity;
+	*pYaw = m_yaw->value * s;
+	*pPitch = m_pitch->value * s;
+}
+
 void iosJK_Look( int dx, int dy )
 {
 	if ( dx || dy )

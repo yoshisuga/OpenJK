@@ -156,7 +156,7 @@ if(BuildSPEngine OR BuildJK2SPEngine)
 			"${SharedDir}/ios/ios_bridge.cpp"
 			"${SharedDir}/ios/ios_bridge.h"
 			"${SharedDir}/ios/ios_touch.m")
-		set(SPEngineLibraries ${SPEngineLibraries} "-framework UIKit" "-framework QuartzCore")
+		set(SPEngineLibraries ${SPEngineLibraries} "-framework UIKit" "-framework QuartzCore" "-framework CoreMotion")
 	endif()
 
 
