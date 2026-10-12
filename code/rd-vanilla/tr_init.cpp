@@ -751,6 +751,10 @@ static void InitOpenGL( void )
 #ifdef OPENJK_GL4ES
 		set_getmainfbsize( R_Gl4esMainFbSize );
 		initialize_gl4es();
+		// No hardware gamma on iOS: brightness (r_gamma) is a pass over the
+		// finished frame instead (RB_Gl4esBrightness), so it isn't baked into
+		// textures as they load (which only took effect at the next load)
+		glConfig.deviceSupportsGamma = qtrue;
 #endif
 
 		// get our config strings

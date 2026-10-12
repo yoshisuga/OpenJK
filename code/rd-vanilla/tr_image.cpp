@@ -1467,10 +1467,21 @@ void R_SetColorMappings( void ) {
 		s_intensitytable[i] = j;
 	}
 
+#ifdef OPENJK_GL4ES
+	// iOS: brightness is a multiply over the finished frame (RB_Gl4esBrightness):
+	// by however much this gamma (and overbright) lifts a dark grey (25%) --
+	// gamma lifts dark tones most, and the game is mostly dark tones. The
+	// menu's slider (r_gamma .5 to 3) goes from x0.25 to about x2.5.
+	{
+		extern float tr_gl4esBrightness;
+		tr_gl4esBrightness = ( 1 << tr.overbrightBits ) * ( g == 1 ? 1.0f : powf( 0.25f, 1.0f / g ) / 0.25f );
+	}
+#else
 	if ( glConfig.deviceSupportsGamma )
 	{
 		ri.WIN_SetGamma( &glConfig, s_gammatable, s_gammatable, s_gammatable );
 	}
+#endif
 }
 
 /*

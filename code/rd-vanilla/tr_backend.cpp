@@ -1529,6 +1529,48 @@ RB_SwapBuffers
 =============
 */
 extern void RB_RenderWorldEffects( void );
+#ifdef OPENJK_GL4ES
+// iOS: brightness (r_gamma, see R_SetColorMappings), as there is no hardware
+// gamma: the finished frame multiplied by this, with blended full-screen
+// quads -- dst * f below 1; dst * (1 + c), c up to 1, as often as needed above
+float tr_gl4esBrightness = 1.0f;
+
+static void RB_Gl4esBrightnessQuad( float c )
+{
+	qglColor4f( c, c, c, 1.0f );
+	qglBegin( GL_QUADS );
+	qglVertex2f( 0, 0 );
+	qglVertex2f( SCREEN_WIDTH, 0 );
+	qglVertex2f( SCREEN_WIDTH, SCREEN_HEIGHT );
+	qglVertex2f( 0, SCREEN_HEIGHT );
+	qglEnd();
+}
+
+static void RB_Gl4esBrightness( void )
+{
+	float f = tr_gl4esBrightness;
+	if ( f > 0.995f && f < 1.005f ) {
+		return;
+	}
+	RB_SetGL2D();
+	GL_SelectTexture( 0 );
+	qglDisable( GL_TEXTURE_2D );
+	if ( f < 1.0f ) {
+		GL_State( GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_ZERO | GLS_DSTBLEND_SRC_COLOR );
+		RB_Gl4esBrightnessQuad( f );
+	} else {
+		GL_State( GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ONE );
+		for ( int i = 0; i < 4 && f > 1.005f; i++ ) {
+			float c = Q_min( f - 1.0f, 1.0f );
+			RB_Gl4esBrightnessQuad( c );
+			f /= 1.0f + c;
+		}
+	}
+	qglEnable( GL_TEXTURE_2D );
+	qglColor4f( 1, 1, 1, 1 );
+}
+#endif
+
 const void	*RB_SwapBuffers( const void *data ) {
 	const swapBuffersCommand_t	*cmd;
 
@@ -1536,6 +1578,10 @@ const void	*RB_SwapBuffers( const void *data ) {
 	if ( tess.numIndexes ) {
 		RB_EndSurface();
 	}
+
+#ifdef OPENJK_GL4ES
+	RB_Gl4esBrightness();
+#endif
 
 	// texture swapping test
 	if ( r_showImages->integer ) {
