@@ -20,6 +20,17 @@ B=$WS/build/$SLICE
 P=$B/prefix
 cd "$WS"
 
+# A build folder set up with another toolchain file can't be reused: start
+# it again
+# (CMake keeps the one it was first set up with in CMakeSystem.cmake)
+fresh() {
+	if [ -d "$1/CMakeFiles" ] && ! grep -qs "include(\"$TC\")" "$1"/CMakeFiles/*/CMakeSystem.cmake; then
+		rm -rf "$1"
+	fi
+}
+for d in SDL2 gl4es openjk; do fresh "$B/$d"; done
+[ -f "$B/SDL2/CMakeCache.txt" ] || rm -rf "$P"
+
 [ -d SDL2 ] || git clone --depth 1 -b release-2.30.x https://github.com/libsdl-org/SDL.git SDL2
 [ -d gl4es ] || git clone https://github.com/yoshisuga/gl4es.git gl4es
 
