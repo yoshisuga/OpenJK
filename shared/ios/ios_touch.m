@@ -572,6 +572,26 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 
 // ---------------------------------------------------------------- C API
 
+void iosWin_SetDrawableHeight( SDL_Window *window, int height )
+{
+	@autoreleasepool {
+		SDL_SysWMinfo info;
+		SDL_VERSION( &info.version );
+		if ( !window || !SDL_GetWindowWMInfo( window, &info ) || info.subsystem != SDL_SYSWM_UIKIT ) return;
+		UIWindow *w = info.info.uikit.window;
+		UIView *view = w.rootViewController.view; // SDL's GL view (SDL_uikitopenglview)
+		if ( !view ) return;
+		CGFloat pointsHigh = MIN( view.bounds.size.width, view.bounds.size.height ); // landscape
+		if ( pointsHigh <= 0 ) return;
+		CGFloat scale = height / pointsHigh;
+		scale = MAX( 1.0, MIN( scale, w.screen.nativeScale ) );
+		view.contentScaleFactor = scale;
+		// its layoutSubviews makes the GL buffers that size
+		[view setNeedsLayout];
+		[view layoutIfNeeded];
+	}
+}
+
 static IOSTouchOverlay *iosTouch_pOverlay = nil;
 
 static UIView *iosTouch_GetHostView( void )

@@ -26,6 +26,13 @@ void iosJK_Look( int dx, int dy );
 // One press of Escape: the menu, or skips a cutscene or video
 void iosJK_Escape( void );
 
+// Draws window's GL view at about height pixels high (the resolution chosen in
+// the menus; it always fills the screen, so only the height counts): from the
+// screen's height in points up to its native pixels. Call after the GL
+// context is made; SDL_GL_GetDrawableSize then gives the new size.
+struct SDL_Window;
+void iosWin_SetDrawableHeight( struct SDL_Window *window, int height );
+
 // Called once per frame (IN_Frame), before events are processed: shows or
 // hides the overlay and sends the look movement gathered since last time
 void iosTouch_Update( void );

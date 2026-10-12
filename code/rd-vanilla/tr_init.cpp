@@ -37,6 +37,16 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 // into this renderer only, so it starts here, once the engine has made the
 // GL context, and extensions are looked up in it, not in the system's GL.
 #include <gl4esinit.h>
+// gl4es's own (glstate.h): its state objects, one per GL context
+extern "C" {
+void *NewGLState( void *shared_glstate, int es2only );
+void ActivateGLState( void *new_glstate );
+void DeleteGLState( void *oldstate );
+}
+// GL contexts made so far, and the gl4es state made for the latest (none for
+// the first: gl4es starts with its own default state)
+static int s_gl4esContexts = 0;
+static void *s_gl4esState = NULL;
 static void APIENTRY_GL4ES R_Gl4esMainFbSize( int *width, int *height )
 {
 	*width = glConfig.vidWidth;
@@ -751,6 +761,17 @@ static void InitOpenGL( void )
 #ifdef OPENJK_GL4ES
 		set_getmainfbsize( R_Gl4esMainFbSize );
 		initialize_gl4es();
+		// A new context after a video restart (resolution change...): gl4es
+		// starts only once, and iOS keeps this renderer in memory when it is
+		// "unloaded", so its state would still be the old context's -- which
+		// textures it had, what it had bound and set -- and it would skip
+		// calls as already done: a black screen. A fresh state for it.
+		if ( s_gl4esContexts++ > 0 ) {
+			void *fresh = NewGLState( NULL, 0 );
+			ActivateGLState( fresh );
+			DeleteGLState( s_gl4esState );
+			s_gl4esState = fresh;
+		}
 		// No hardware gamma on iOS: brightness (r_gamma) is a pass over the
 		// finished frame instead (RB_Gl4esBrightness), so it isn't baked into
 		// textures as they load (which only took effect at the next load)

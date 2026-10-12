@@ -21,6 +21,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#include "ios/ios_bridge.h"
+#endif
 #endif
 #include <SDL.h>
 #include <SDL_syswm.h>
@@ -620,7 +623,9 @@ static rserr_t GLimp_SetMode(glconfig_t *glConfig, const windowDesc_t *windowDes
 			}
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 			// iOS spike: the window always fills the screen, whatever mode was
-			// asked for, so draw to all of it
+			// asked for, so draw to all of it -- as sharp as the mode's height
+			// asks (from the screen's points up to its native pixels)
+			iosWin_SetDrawableHeight( screen, glConfig->vidHeight );
 			SDL_GL_GetDrawableSize( screen, &glConfig->vidWidth, &glConfig->vidHeight );
 			glConfig->isFullscreen = qtrue;
 			Com_Printf( "iOS: drawing at %d x %d\n", glConfig->vidWidth, glConfig->vidHeight );
