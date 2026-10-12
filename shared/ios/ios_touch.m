@@ -8,8 +8,14 @@
 //   - bottom right: FIRE (+attack), ALT (+altattack), JUMP (+moveup),
 //     CROUCH (+movedown), USE (+use), FORCE (+useforce, the selected power)
 //   - top left: NEXT WPN (weapnext), NEXT FORCE (forcenext), ITEM (invuse),
-//     VIEW (cg_thirdperson !), GYRO; top right: MENU (Escape, which also
-//     skips an in-game cutscene)
+//     VIEW (cg_thirdperson !), GYRO; top right: QUICK SAVE, QUICK LOAD and
+//     MENU (Escape, which also skips an in-game cutscene)
+//   - QUICK SAVE and QUICK LOAD only go off when held: a ring round the
+//     button fills (IOSTOUCH_QUICK_HOLD seconds), and once it is full the
+//     game saves or loads ("save quik*", "load quik": F12 and F9 on PC) --
+//     once, with the finger still down. Lifting sooner, or sliding off,
+//     does nothing; and one completed hold ends every other, so both
+//     pressed together do only the one that fills first.
 //   - GYRO turns gyro aiming on or off (lit while on, remembered between
 //     launches): turning the phone turns the view too, along with dragging.
 //     It runs only while a level is being played.
@@ -60,8 +66,11 @@
 #define IOSTOUCH_GYRO_HZ 100.0
 #define IOSTOUCH_GYRO_MAX_GAP 0.1
 #define IOSTOUCH_GYRO_DEFAULTS_KEY @"iosTouchGyro"
+// QUICK SAVE and QUICK LOAD have to be held this long, so a stray touch can't
+// save over the quick save or throw away progress
+#define IOSTOUCH_QUICK_HOLD 0.3
 
-enum { KIND_HOLD, KIND_TAP, KIND_MENU, KIND_GYRO };
+enum { KIND_HOLD, KIND_TAP, KIND_MENU, KIND_GYRO, KIND_QUICK };
 
 typedef struct {
 	const char *label;
@@ -74,7 +83,8 @@ typedef struct {
 
 enum {
 	BTN_FIRE, BTN_ALT, BTN_JUMP, BTN_CROUCH, BTN_USE, BTN_FORCE,
-	BTN_NEXTWPN, BTN_NEXTFORCE, BTN_ITEM, BTN_VIEW, BTN_GYRO, BTN_MENU,
+	BTN_NEXTWPN, BTN_NEXTFORCE, BTN_ITEM, BTN_VIEW, BTN_GYRO,
+	BTN_QUICKSAVE, BTN_QUICKLOAD, BTN_MENU,
 	BTN_COUNT
 };
 static iosTouchButton iosTouch_aButtons[BTN_COUNT] = {
@@ -89,6 +99,8 @@ static iosTouchButton iosTouch_aButtons[BTN_COUNT] = {
 	[BTN_ITEM]      = { "ITEM",        KIND_TAP,  "invuse\n",   22.0f, 0 },
 	[BTN_VIEW]      = { "VIEW",        KIND_TAP,  "cg_thirdperson !\n", 22.0f, 0 },
 	[BTN_GYRO]      = { "GYRO",        KIND_GYRO, NULL,         22.0f, 0 },
+	[BTN_QUICKSAVE] = { "QUICK\nSAVE", KIND_QUICK, "save quik*\n", 22.0f, 0 },
+	[BTN_QUICKLOAD] = { "QUICK\nLOAD", KIND_QUICK, "load quik\n",  22.0f, 0 },
 	[BTN_MENU]      = { "MENU",        KIND_MENU, NULL,         22.0f, 0 },
 };
 
@@ -100,6 +112,8 @@ typedef struct {
 	int button;
 	CGPoint origin;
 	CGPoint last;
+	CFTimeInterval tDown; // when it landed (CACurrentMediaTime)
+	int bFired;           // KIND_QUICK: its hold is over (saved, loaded, slid off, or another hold went off)
 } iosTouchSlot;
 
 static iosTouchSlot iosTouch_aSlots[IOSTOUCH_MAX_TOUCHES];
@@ -274,6 +288,7 @@ static void iosTouch_UpdateGyro( int bPlaying, UIView *v )
 // ---------------------------------------------------------------- overlay view
 
 @interface IOSTouchOverlay : UIView {
+	CAShapeLayer *aQuickRings[BTN_COUNT]; // KIND_QUICK: fills while held
 	int bMenuFingerDown;
 	UILabel *aButtonViews[BTN_COUNT];
 	UIView *stickBase;
@@ -281,6 +296,7 @@ static void iosTouch_UpdateGyro( int bPlaying, UIView *v )
 	int bStickActive;
 }
 - (void)releaseAll;
+- (void)tick;
 - (void)viewWithGyroHidden;
 - (void)refreshGyroLook;
 @end
@@ -326,6 +342,22 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 			aButtonViews[i] = l;
 			[self addSubview:l];
 		}
+		// QUICK SAVE's and QUICK LOAD's rings
+		for ( int i = 0; i < BTN_COUNT; i++ ) {
+			if ( iosTouch_aButtons[i].kind != KIND_QUICK ) continue;
+			CGFloat r = iosTouch_aButtons[i].radius;
+			CAShapeLayer *ring = [CAShapeLayer layer];
+			ring.frame = CGRectMake( 0, 0, r * 2, r * 2 );
+			ring.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake( r, r ) radius:r - 2.5
+			                                       startAngle:-M_PI_2 endAngle:3 * M_PI_2 clockwise:YES].CGPath;
+			ring.fillColor = [UIColor clearColor].CGColor;
+			ring.strokeColor = [UIColor colorWithRed:0.47 green:0.78 blue:1.0 alpha:0.95].CGColor;
+			ring.lineWidth = 3.0;
+			ring.strokeEnd = 0.0;
+			[aButtonViews[i].layer addSublayer:ring];
+			aQuickRings[i] = ring;
+		}
+
 		// GYRO, if there is a gyroscope to aim with
 		if ( !iosTouch_pMotion ) iosTouch_pMotion = [[CMMotionManager alloc] init];
 		aButtonViews[BTN_GYRO].hidden = !iosTouch_pMotion.deviceMotionAvailable;
@@ -386,8 +418,13 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 		iosTouch_aButtons[aTopLeft[i]].x = left + 24 + 58 * i;
 		iosTouch_aButtons[aTopLeft[i]].y = top + 26;
 	}
+	// Top right: QUICK SAVE, QUICK LOAD, MENU in the corner, 66 points apart
+	// (10 between where each takes touches), so a press meant for one doesn't
+	// land on the next
+	iosTouch_aButtons[BTN_QUICKSAVE].x = right - 156;
+	iosTouch_aButtons[BTN_QUICKLOAD].x = right - 90;
 	iosTouch_aButtons[BTN_MENU].x = right - 24;
-	iosTouch_aButtons[BTN_MENU].y = top + 26;
+	iosTouch_aButtons[BTN_QUICKSAVE].y = iosTouch_aButtons[BTN_QUICKLOAD].y = iosTouch_aButtons[BTN_MENU].y = top + 26;
 
 	for ( int i = 0; i < BTN_COUNT; i++ )
 		aButtonViews[i].center = CGPointMake( iosTouch_aButtons[i].x, iosTouch_aButtons[i].y );
@@ -425,6 +462,9 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 		if ( iosTouch_aHeld[i]++ == 0 ) {
 			if ( b->kind == KIND_HOLD ) iosTouch_SetHeld( b->command, IOSTOUCH_KEYNUM_BASE + i, 1 );
 			else if ( b->kind == KIND_TAP ) iosJK_Command( b->command );
+			else if ( b->kind == KIND_QUICK ) {
+				// goes off in -tick, once held long enough
+			}
 			else if ( b->kind == KIND_GYRO ) {
 				iosTouch_bGyro = !iosTouch_bGyro;
 				[[NSUserDefaults standardUserDefaults] setBool:( iosTouch_bGyro ? YES : NO ) forKey:IOSTOUCH_GYRO_DEFAULTS_KEY];
@@ -480,6 +520,7 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 		iosTouchSlot *s = &iosTouch_aSlots[slot];
 		s->touch = t;
 		s->origin = s->last = p;
+		s->tDown = CACurrentMediaTime( );
 		s->button = [self buttonAt:p];
 		if ( s->button >= 0 ) {
 			s->role = ROLE_BUTTON;
@@ -517,6 +558,14 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 				iosTouch_SetStick( dx, dy, 1 );
 				stickKnob.center = CGPointMake( s->origin.x + dx * IOSTOUCH_STICK_RADIUS, s->origin.y + dy * IOSTOUCH_STICK_RADIUS );
 			}
+			else if ( s->role == ROLE_BUTTON && iosTouch_aButtons[s->button].kind == KIND_QUICK ) {
+				// slid off: no save or load from this touch, even back on
+				iosTouchButton *b = &iosTouch_aButtons[s->button];
+				if ( !s->bFired && hypot( p.x - b->x, p.y - b->y ) > b->radius + 6.0 ) {
+					s->bFired = 1;
+					[self setRing:s->button progress:0.0];
+				}
+			}
 			else if ( s->role == ROLE_LOOK || ( s->role == ROLE_BUTTON && iosTouch_aButtons[s->button].bLookWhileHeld ) ) {
 				iosTouch_lookX += ( p.x - s->last.x ) * IOSTOUCH_LOOK_SCALE_X;
 				iosTouch_lookY += ( p.y - s->last.y ) * IOSTOUCH_LOOK_SCALE_Y;
@@ -532,7 +581,10 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 		for ( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ ) {
 			iosTouchSlot *s = &iosTouch_aSlots[i];
 			if ( s->touch != t ) continue;
-			if ( s->role == ROLE_BUTTON ) [self setButton:s->button held:0];
+			if ( s->role == ROLE_BUTTON ) {
+				if ( iosTouch_aButtons[s->button].kind == KIND_QUICK ) [self setRing:s->button progress:0.0];
+				[self setButton:s->button held:0];
+			}
 			else if ( s->role == ROLE_MENU ) {
 				[self menuPointerAt:[t locationInView:self]];
 				iosJK_MenuButton( 0 );
@@ -551,6 +603,38 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event { [self endTouches:touches]; }
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event { [self endTouches:touches]; }
+
+- (void)setRing:(int)i progress:(CGFloat)progress
+{
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	aQuickRings[i].strokeEnd = progress;
+	[CATransaction commit];
+}
+
+// Once per frame while playing: QUICK SAVE and QUICK LOAD fill their rings
+// while held, and go off once full (the first to fill ends every other hold)
+- (void)tick
+{
+	CFTimeInterval now = CACurrentMediaTime( );
+	for ( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ ) {
+		iosTouchSlot *s = &iosTouch_aSlots[i];
+		if ( !s->touch || s->role != ROLE_BUTTON || s->bFired || iosTouch_aButtons[s->button].kind != KIND_QUICK ) continue;
+		CGFloat progress = (CGFloat)( ( now - s->tDown ) / IOSTOUCH_QUICK_HOLD );
+		if ( progress < 1.0 ) {
+			[self setRing:s->button progress:progress];
+			continue;
+		}
+		iosJK_Command( iosTouch_aButtons[s->button].command );
+		for ( int k = 0; k < IOSTOUCH_MAX_TOUCHES; k++ ) {
+			iosTouchSlot *o = &iosTouch_aSlots[k];
+			if ( o->touch && o->role == ROLE_BUTTON && iosTouch_aButtons[o->button].kind == KIND_QUICK ) {
+				o->bFired = 1;
+				[self setRing:o->button progress:0.0];
+			}
+		}
+	}
+}
 
 // No gyroscope: GYRO stays hidden
 - (void)viewWithGyroHidden
@@ -572,6 +656,9 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 	}
 	bStickActive = 0;
 	bMenuFingerDown = 0;
+	for ( int i = 0; i < BTN_COUNT; i++ ) {
+		if ( aQuickRings[i] ) [self setRing:i progress:0.0];
+	}
 	iosTouch_SetStick( 0, 0, 0 );
 	stickBase.hidden = YES;
 	stickKnob.hidden = YES;
@@ -656,6 +743,7 @@ void iosTouch_Update( void )
 		if ( !iosTouch_pMotion.deviceMotionAvailable ) [iosTouch_pOverlay viewWithGyroHidden];
 
 		iosTouch_UpdateGyro( bPlaying, iosTouch_pOverlay );
+		if ( bPlaying ) [iosTouch_pOverlay tick];
 
 		if ( bPlaying ) {
 			int dx = (int)iosTouch_lookX, dy = (int)iosTouch_lookY;
