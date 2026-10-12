@@ -31,6 +31,9 @@
 //     top (binoculars, bacta, seeker, light amp goggles, sentry), dimmed when
 //     not carried, with how many; lifting on one selects it and uses it
 //     ("invselect", then invuse). The game tells it what's carried (cg_iosinv).
+//   - ⚙︎ (after GYRO) opens a small settings panel: Look speed (dragging, a
+//     multiplier) and Gyro speed (degrees of view per degree of phone), applied
+//     as the sliders move and remembered between launches
 //   - GYRO turns gyro aiming on or off (lit while on, remembered between
 //     launches): turning the phone turns the view too, along with dragging.
 //     It runs only while a level is being played.
@@ -57,6 +60,9 @@
 // Look speed: mouse counts per point of finger travel
 #define IOSTOUCH_LOOK_SCALE_X 2.5f
 #define IOSTOUCH_LOOK_SCALE_Y 2.0f
+// ...times the Look speed setting (the ⚙︎ panel; kept under this key)
+#define IOSTOUCH_LOOK_SPEED_DEFAULT 1.5f
+#define IOSTOUCH_LOOK_SPEED_KEY @"iosTouchLookSpeed"
 // The move stick: where it can start (the left part of the screen), its
 // radius and its knob's, and how far it has to be pushed to move
 #define IOSTOUCH_STICK_ZONE 0.42f
@@ -76,7 +82,8 @@
 // shake doesn't shake the view. Samples come IOSTOUCH_GYRO_HZ times a
 // second; one after a gap longer than IOSTOUCH_GYRO_MAX_GAP seconds only
 // starts the count. Whether it's on is kept under IOSTOUCH_GYRO_DEFAULTS_KEY.
-#define IOSTOUCH_GYRO_SCALE 1.5
+#define IOSTOUCH_GYRO_SCALE 1.5 // the default; the ⚙︎ panel's Gyro speed (kept under this key)
+#define IOSTOUCH_GYRO_SPEED_KEY @"iosTouchGyroSpeed"
 #define IOSTOUCH_GYRO_TIGHTEN 3.0
 #define IOSTOUCH_GYRO_HZ 100.0
 #define IOSTOUCH_GYRO_MAX_GAP 0.1
@@ -139,7 +146,7 @@ static const iosTouchWheelMap iosTouch_itemWheel = {
 	"ITEMS", "not carried", "lift to use", "NO ITEMS", "none carried"
 };
 
-enum { KIND_HOLD, KIND_TAP, KIND_MENU, KIND_GYRO, KIND_QUICK, KIND_WHEEL };
+enum { KIND_HOLD, KIND_TAP, KIND_MENU, KIND_GYRO, KIND_QUICK, KIND_WHEEL, KIND_SETTINGS };
 
 typedef struct {
 	const char *label;
@@ -152,7 +159,7 @@ typedef struct {
 
 enum {
 	BTN_FIRE, BTN_ALT, BTN_JUMP, BTN_CROUCH, BTN_USE, BTN_FORCE,
-	BTN_NEXTWPN, BTN_WHEEL, BTN_ITEM, BTN_VIEW, BTN_GYRO,
+	BTN_NEXTWPN, BTN_WHEEL, BTN_ITEM, BTN_VIEW, BTN_GYRO, BTN_SETTINGS,
 	BTN_QUICKSAVE, BTN_QUICKLOAD, BTN_MENU,
 	BTN_COUNT
 };
@@ -168,6 +175,7 @@ static iosTouchButton iosTouch_aButtons[BTN_COUNT] = {
 	[BTN_ITEM]      = { "ITEM",        KIND_WHEEL, "invuse\n",  22.0f, 0 },
 	[BTN_VIEW]      = { "VIEW",        KIND_TAP,  "cg_thirdperson !\n", 22.0f, 0 },
 	[BTN_GYRO]      = { "GYRO",        KIND_GYRO, NULL,         22.0f, 0 },
+	[BTN_SETTINGS]  = { "⚙︎",           KIND_SETTINGS, NULL,     22.0f, 0 },
 	[BTN_QUICKSAVE] = { "QUICK\nSAVE", KIND_QUICK, "save quik*\n", 22.0f, 0 },
 	[BTN_QUICKLOAD] = { "QUICK\nLOAD", KIND_QUICK, "load quik\n",  22.0f, 0 },
 	[BTN_MENU]      = { "MENU",        KIND_MENU, NULL,         22.0f, 0 },
@@ -242,6 +250,10 @@ static void iosTouch_SetStick( float x, float y, int bActive )
 		iosJK_Command( line );
 	}
 }
+
+// The ⚙︎ panel's settings
+static float iosTouch_lookSpeed = IOSTOUCH_LOOK_SPEED_DEFAULT;
+static float iosTouch_gyroSpeed = IOSTOUCH_GYRO_SCALE;
 
 // ---------------------------------------------------------------- gyro aiming
 
@@ -376,13 +388,17 @@ static void iosTouch_UpdateGyro( int bPlaying, UIView *v )
 	// mouse right turns right; mouse down looks down (m_pitch > 0), so up is
 	// negative counts -- by the size of m_pitch, so an inverted mouse doesn't
 	// invert the phone
-	if ( fabsf( yawDeg ) > 1e-6f ) iosTouch_lookX += (float)( right * IOSTOUCH_GYRO_SCALE / fabsf( yawDeg ) );
-	if ( fabsf( pitchDeg ) > 1e-6f ) iosTouch_lookY -= (float)( up * IOSTOUCH_GYRO_SCALE / pitchDeg );
+	if ( fabsf( yawDeg ) > 1e-6f ) iosTouch_lookX += (float)( right * iosTouch_gyroSpeed / fabsf( yawDeg ) );
+	if ( fabsf( pitchDeg ) > 1e-6f ) iosTouch_lookY -= (float)( up * iosTouch_gyroSpeed / pitchDeg );
 }
 
 // ---------------------------------------------------------------- overlay view
 
 @interface IOSTouchOverlay : UIView {
+	// The ⚙︎ panel
+	UIView *settingsPanel;
+	UISlider *lookSlider, *gyroSlider;
+	UILabel *lookValue, *gyroValue;
 	// The force wheel: open or not (and whether it stays open for tapping),
 	// its views, where it is, what the game says is learned and selected
 	int bWheelOpen;
@@ -406,6 +422,7 @@ static void iosTouch_UpdateGyro( int bPlaying, UIView *v )
 	int bStickActive;
 }
 - (void)releaseAll;
+- (void)showSettings:(BOOL)bShow;
 - (void)tick;
 - (void)viewWithGyroHidden;
 - (void)refreshGyroLook;
@@ -516,6 +533,12 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 		[self addSubview:wheelView];
 		wheelLastHot = -1;
 		wheelTick = [[UISelectionFeedbackGenerator alloc] init];
+
+		// The ⚙︎ panel, and the settings it keeps
+		NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+		if ( [defaults objectForKey:IOSTOUCH_LOOK_SPEED_KEY] ) iosTouch_lookSpeed = [defaults floatForKey:IOSTOUCH_LOOK_SPEED_KEY];
+		if ( [defaults objectForKey:IOSTOUCH_GYRO_SPEED_KEY] ) iosTouch_gyroSpeed = [defaults floatForKey:IOSTOUCH_GYRO_SPEED_KEY];
+		[self makeSettingsPanel];
 	}
 	return self;
 }
@@ -558,8 +581,8 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 	iosTouch_aButtons[BTN_FORCE].x = iosTouch_aButtons[BTN_USE].x - 20;
 	iosTouch_aButtons[BTN_FORCE].y = iosTouch_aButtons[BTN_JUMP].y - 72;
 
-	const int aTopLeft[5] = { BTN_NEXTWPN, BTN_WHEEL, BTN_ITEM, BTN_VIEW, BTN_GYRO };
-	for ( int i = 0; i < 5; i++ ) {
+	const int aTopLeft[6] = { BTN_NEXTWPN, BTN_WHEEL, BTN_ITEM, BTN_VIEW, BTN_GYRO, BTN_SETTINGS };
+	for ( int i = 0; i < 6; i++ ) {
 		iosTouch_aButtons[aTopLeft[i]].x = left + 24 + 58 * i;
 		iosTouch_aButtons[aTopLeft[i]].y = top + 26;
 	}
@@ -612,6 +635,9 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 				// KIND_QUICK goes off in -tick, once held long enough;
 				// KIND_WHEEL is a tap, a slide or a hold (touches and -tick)
 			}
+			else if ( b->kind == KIND_SETTINGS ) {
+				[self showSettings:settingsPanel.hidden];
+			}
 			else if ( b->kind == KIND_GYRO ) {
 				iosTouch_bGyro = !iosTouch_bGyro;
 				[[NSUserDefaults standardUserDefaults] setBool:( iosTouch_bGyro ? YES : NO ) forKey:IOSTOUCH_GYRO_DEFAULTS_KEY];
@@ -632,6 +658,99 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 {
 	CGSize sz = self.bounds.size;
 	iosJK_MenuPointer( (int)( p.x / sz.width * 640.0f ), (int)( p.y / sz.height * 480.0f ) );
+}
+
+// ---------------------------------------------------------------- settings panel
+
+// A row: a name, a slider (min..max), and its value on the right
+- (UISlider *)addSettingRow:(NSString *)name y:(CGFloat)y min:(float)lo max:(float)hi value:(float)v valueLabel:(UILabel **)pValue
+{
+	UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake( 16, y, 92, 30 )];
+	l.text = name;
+	l.textColor = [UIColor whiteColor];
+	l.font = [UIFont boldSystemFontOfSize:14];
+	[settingsPanel addSubview:l];
+	UISlider *sl = [[UISlider alloc] initWithFrame:CGRectMake( 110, y, 170, 30 )];
+	sl.minimumValue = lo;
+	sl.maximumValue = hi;
+	sl.value = v;
+	[sl addTarget:self action:@selector(settingChanged:) forControlEvents:UIControlEventValueChanged];
+	[settingsPanel addSubview:sl];
+	UILabel *val = [[UILabel alloc] initWithFrame:CGRectMake( 288, y, 52, 30 )];
+	val.textColor = [UIColor colorWithWhite:0.85 alpha:1.0];
+	val.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightSemibold];
+	[settingsPanel addSubview:val];
+	*pValue = val;
+	return sl;
+}
+
+- (void)makeSettingsPanel
+{
+	settingsPanel = [[UIView alloc] initWithFrame:CGRectMake( 0, 0, 356, 170 )];
+	settingsPanel.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.92];
+	settingsPanel.layer.cornerRadius = 16;
+	settingsPanel.layer.borderWidth = 1.5;
+	settingsPanel.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.35].CGColor;
+	settingsPanel.hidden = YES;
+	UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake( 16, 10, 240, 24 )];
+	title.text = @"Touch controls";
+	title.textColor = [UIColor whiteColor];
+	title.font = [UIFont boldSystemFontOfSize:16];
+	[settingsPanel addSubview:title];
+	lookSlider = [self addSettingRow:@"Look speed" y:46 min:0.5f max:3.0f value:iosTouch_lookSpeed valueLabel:&lookValue];
+	gyroSlider = [self addSettingRow:@"Gyro speed" y:86 min:0.5f max:3.0f value:iosTouch_gyroSpeed valueLabel:&gyroValue];
+	UIButton *done = [UIButton buttonWithType:UIButtonTypeSystem];
+	done.frame = CGRectMake( 356 - 96, 128, 80, 32 );
+	[done setTitle:@"Done" forState:UIControlStateNormal];
+	done.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+	[done addTarget:self action:@selector(settingsDone:) forControlEvents:UIControlEventTouchUpInside];
+	[settingsPanel addSubview:done];
+	UILabel *note = [[UILabel alloc] initWithFrame:CGRectMake( 16, 128, 230, 32 )];
+	note.text = @"Look: dragging. Gyro: view ° per phone °.";
+	note.textColor = [UIColor colorWithWhite:0.65 alpha:1.0];
+	note.font = [UIFont systemFontOfSize:11];
+	note.numberOfLines = 2;
+	[settingsPanel addSubview:note];
+	[self addSubview:settingsPanel];
+	[self refreshSettingValues];
+}
+
+- (void)refreshSettingValues
+{
+	lookValue.text = [NSString stringWithFormat:@"%.1f×", iosTouch_lookSpeed];
+	gyroValue.text = [NSString stringWithFormat:@"%.1f", iosTouch_gyroSpeed];
+}
+
+// A slider moved: applied at once, and kept (in steps of 0.1)
+- (void)settingChanged:(UISlider *)sl
+{
+	float v = roundf( sl.value * 10.0f ) / 10.0f;
+	if ( sl == lookSlider ) {
+		iosTouch_lookSpeed = v;
+		[[NSUserDefaults standardUserDefaults] setFloat:v forKey:IOSTOUCH_LOOK_SPEED_KEY];
+	}
+	else {
+		iosTouch_gyroSpeed = v;
+		[[NSUserDefaults standardUserDefaults] setFloat:v forKey:IOSTOUCH_GYRO_SPEED_KEY];
+	}
+	[self refreshSettingValues];
+}
+
+- (void)settingsDone:(id)sender
+{
+	[self showSettings:NO];
+}
+
+- (void)showSettings:(BOOL)bShow
+{
+	if ( bShow ) {
+		lookSlider.value = iosTouch_lookSpeed;
+		gyroSlider.value = iosTouch_gyroSpeed;
+		[self refreshSettingValues];
+		settingsPanel.center = CGPointMake( self.bounds.size.width * 0.5, self.bounds.size.height * 0.5 );
+		[self bringSubviewToFront:settingsPanel];
+	}
+	settingsPanel.hidden = !bShow;
 }
 
 // ---------------------------------------------------------------- force wheel
@@ -827,6 +946,8 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
 	for ( UITouch *t in touches ) {
+		// on the ⚙︎ panel (its sliders and Done take their own touches)
+		if ( !settingsPanel.hidden && [t.view isDescendantOfView:settingsPanel] ) continue;
 		// A video: a tap skips it
 		if ( iosJK_IsCinematic( ) ) {
 			iosJK_Escape( );
@@ -930,8 +1051,8 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 				}
 			}
 			else if ( s->role == ROLE_LOOK || ( s->role == ROLE_BUTTON && iosTouch_aButtons[s->button].bLookWhileHeld ) ) {
-				iosTouch_lookX += ( p.x - s->last.x ) * IOSTOUCH_LOOK_SCALE_X;
-				iosTouch_lookY += ( p.y - s->last.y ) * IOSTOUCH_LOOK_SCALE_Y;
+				iosTouch_lookX += ( p.x - s->last.x ) * IOSTOUCH_LOOK_SCALE_X * iosTouch_lookSpeed;
+				iosTouch_lookY += ( p.y - s->last.y ) * IOSTOUCH_LOOK_SCALE_Y * iosTouch_lookSpeed;
 			}
 			s->last = p;
 		}
@@ -1037,6 +1158,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 - (void)releaseAll
 {
 	if ( bWheelOpen ) [self closeWheelSelecting:-1];
+	[self showSettings:NO];
 	for ( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ ) {
 		iosTouchSlot *s = &iosTouch_aSlots[i];
 		if ( s->touch && s->role == ROLE_BUTTON ) [self setButton:s->button held:0];
