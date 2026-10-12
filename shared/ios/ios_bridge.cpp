@@ -7,6 +7,8 @@
 #include "client/client.h"
 #include "sys/sys_local.h"
 
+void _UI_MouseEvent( int dx, int dy ); // ui_main.cpp (the single player UI is part of the engine)
+
 extern "C" {
 
 int iosJK_IsPlaying( void )
@@ -19,9 +21,28 @@ int iosJK_IsCinematic( void )
 	return cls.state == CA_CINEMATIC;
 }
 
+int iosJK_InMenu( void )
+{
+	return ( Key_GetCatcher( ) & KEYCATCH_UI ) != 0;
+}
+
 void iosJK_Command( const char *text )
 {
+	Com_Printf( "iOS touch: %s", text ); // spike diagnostic
 	Cbuf_AddText( text );
+}
+
+void iosJK_MenuPointer( int x, int y )
+{
+	// Straight to the menu: queued mouse moves are merged into one, so "to the
+	// top left (where the menu clamps it), then out to x, y" can't be queued
+	_UI_MouseEvent( -100000, -100000 );
+	_UI_MouseEvent( x, y );
+}
+
+void iosJK_MenuButton( int bDown )
+{
+	Sys_QueEvent( 0, SE_KEY, A_MOUSE1, bDown ? qtrue : qfalse, 0, NULL );
 }
 
 void iosJK_Look( int dx, int dy )

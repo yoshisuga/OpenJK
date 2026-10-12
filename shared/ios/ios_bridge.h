@@ -9,6 +9,12 @@ extern "C" {
 int iosJK_IsPlaying( void );
 // A video (cinematic) is playing; Escape skips it
 int iosJK_IsCinematic( void );
+// A menu is up (main menu, pause menu, datapad...)
+int iosJK_InMenu( void );
+// Puts the menu pointer at (x, y) in the menus' 640x480 screen
+void iosJK_MenuPointer( int x, int y );
+// Presses or lets go of the left mouse button (clicks in the menus)
+void iosJK_MenuButton( int bDown );
 // Adds a command line ("+attack 1000\n") to the command buffer
 void iosJK_Command( const char *text );
 // Turns the view, as mouse movement

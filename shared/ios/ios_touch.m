@@ -12,7 +12,11 @@
 //     in-game cutscene)
 // The buttons run the game's commands, not keys, so they don't depend on the
 // key bindings. While a video plays, a tap anywhere skips it (Escape). In
-// the menus the overlay is hidden, so touches reach SDL as before.
+// the menus the overlay shows no buttons; a touch puts the menu pointer under
+// the finger and clicks there (press as it lands, let go as it lifts), and
+// dragging moves the pointer (sliders). A pointer moved by dragging, as with
+// a mouse, can't work: touching to drag would already click wherever the
+// pointer was, and the pause menu closes at a click outside it.
 // Written for manual reference counting or ARC (the overlay lives for the
 // whole process).
 
@@ -70,7 +74,7 @@ static iosTouchButton iosTouch_aButtons[BTN_COUNT] = {
 	[BTN_MENU]      = { "MENU",        KIND_MENU, NULL,         22.0f, 0 },
 };
 
-enum { ROLE_NONE, ROLE_STICK, ROLE_LOOK, ROLE_BUTTON };
+enum { ROLE_NONE, ROLE_STICK, ROLE_LOOK, ROLE_BUTTON, ROLE_MENU };
 
 typedef struct {
 	UITouch *touch; // not retained; only compared
@@ -115,6 +119,7 @@ static void iosTouch_SetStick( float x, float y, int bActive )
 // ---------------------------------------------------------------- overlay view
 
 @interface IOSTouchOverlay : UIView {
+	int bMenuFingerDown;
 	UILabel *aButtonViews[BTN_COUNT];
 	UIView *stickBase;
 	UIView *stickKnob;
@@ -247,12 +252,35 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 	aButtonViews[i].backgroundColor = [UIColor colorWithWhite:( iosTouch_aHeld[i] ? 1.0 : 0.0 ) alpha:( iosTouch_aHeld[i] ? 0.3 : 0.25 )];
 }
 
+// A menu finger at p: the pointer goes under it, in the menus' 640x480
+- (void)menuPointerAt:(CGPoint)p
+{
+	CGSize sz = self.bounds.size;
+	iosJK_MenuPointer( (int)( p.x / sz.width * 640.0f ), (int)( p.y / sz.height * 480.0f ) );
+}
+
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
 	for ( UITouch *t in touches ) {
 		// A video: a tap skips it
 		if ( iosJK_IsCinematic( ) ) {
 			iosJK_Escape( );
+			continue;
+		}
+		// A menu: one finger at a time points and clicks
+		if ( iosJK_InMenu( ) ) {
+			if ( bMenuFingerDown ) continue;
+			int slot = -1;
+			for ( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ ) {
+				if ( !iosTouch_aSlots[i].touch ) { slot = i; break; }
+			}
+			if ( slot < 0 ) continue;
+			iosTouchSlot *s = &iosTouch_aSlots[slot];
+			s->touch = t;
+			s->role = ROLE_MENU;
+			bMenuFingerDown = 1;
+			[self menuPointerAt:[t locationInView:self]];
+			iosJK_MenuButton( 1 );
 			continue;
 		}
 		int slot = -1;
@@ -290,7 +318,10 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 			iosTouchSlot *s = &iosTouch_aSlots[i];
 			if ( s->touch != t ) continue;
 			CGPoint p = [t locationInView:self];
-			if ( s->role == ROLE_STICK ) {
+			if ( s->role == ROLE_MENU ) {
+				[self menuPointerAt:p];
+			}
+			else if ( s->role == ROLE_STICK ) {
 				float dx = ( p.x - s->origin.x ) / IOSTOUCH_STICK_RADIUS;
 				float dy = ( p.y - s->origin.y ) / IOSTOUCH_STICK_RADIUS;
 				float len = sqrtf( dx * dx + dy * dy );
@@ -314,6 +345,11 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 			iosTouchSlot *s = &iosTouch_aSlots[i];
 			if ( s->touch != t ) continue;
 			if ( s->role == ROLE_BUTTON ) [self setButton:s->button held:0];
+			else if ( s->role == ROLE_MENU ) {
+				[self menuPointerAt:[t locationInView:self]];
+				iosJK_MenuButton( 0 );
+				bMenuFingerDown = 0;
+			}
 			else if ( s->role == ROLE_STICK ) {
 				bStickActive = 0;
 				iosTouch_SetStick( 0, 0, 0 );
@@ -334,12 +370,14 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 	for ( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ ) {
 		iosTouchSlot *s = &iosTouch_aSlots[i];
 		if ( s->touch && s->role == ROLE_BUTTON ) [self setButton:s->button held:0];
+		if ( s->touch && s->role == ROLE_MENU ) iosJK_MenuButton( 0 );
 		memset( s, 0, sizeof( *s ) );
 	}
 	for ( int i = 0; i < BTN_COUNT; i++ ) {
 		while ( iosTouch_aHeld[i] ) [self setButton:i held:0];
 	}
 	bStickActive = 0;
+	bMenuFingerDown = 0;
 	iosTouch_SetStick( 0, 0, 0 );
 	stickBase.hidden = YES;
 	stickKnob.hidden = YES;
@@ -367,7 +405,11 @@ void iosTouch_Update( void )
 {
 	@autoreleasepool {
 		int bPlaying = iosJK_IsPlaying( );
-		int bWant = bPlaying || iosJK_IsCinematic( );
+		int bMenu = iosJK_InMenu( );
+		int bWant = bPlaying || bMenu || iosJK_IsCinematic( );
+		// Playing, a menu or a video: whatever was held lets go when that changes
+		static int lastMode = -1;
+		int mode = bPlaying ? 1 : ( bMenu ? 2 : 3 );
 
 		UIView *host = iosTouch_GetHostView( );
 		if ( !iosTouch_pOverlay ) {
@@ -389,7 +431,11 @@ void iosTouch_Update( void )
 			iosTouch_pOverlay.hidden = !bWant;
 			[iosTouch_pOverlay releaseAll];
 		}
-		// A video: the overlay only takes taps (to skip); no buttons
+		else if ( mode != lastMode ) {
+			[iosTouch_pOverlay releaseAll];
+		}
+		lastMode = mode;
+		// A video or a menu: the overlay takes taps (to skip, to click); no buttons
 		for ( UIView *v in iosTouch_pOverlay.subviews ) {
 			if ( [v isKindOfClass:[UILabel class]] ) v.hidden = !bPlaying;
 		}
