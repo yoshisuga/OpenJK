@@ -7,8 +7,8 @@
 //     aiming
 //   - bottom right: FIRE (+attack), ALT (+altattack), JUMP (+moveup),
 //     CROUCH (+movedown), USE (+use), FORCE (+useforce, the selected power)
-//   - top left: NEXT WPN (weapnext), FORCE WHEEL and ITEM (see below),
-//     VIEW (cg_thirdperson !), GYRO; top right: QUICK SAVE, QUICK LOAD and
+//   - top left: NEXT WPN (weapnext), FORCE WHEEL and ITEM (see below), STYLE
+//     (saberAttackCycle: the saber's stance), VIEW (cg_thirdperson !), GYRO; top right: QUICK SAVE, QUICK LOAD and
 //     MENU (Escape, which also skips an in-game cutscene)
 //   - QUICK SAVE and QUICK LOAD only go off when held: a ring round the
 //     button fills (IOSTOUCH_QUICK_HOLD seconds), and once it is full the
@@ -19,8 +19,8 @@
 //   - FORCE WHEEL: a quick tap selects the next learned power (forcenext); a
 //     slide out of it, or a hold, opens the force wheel. Every selectable
 //     power has a fixed slice, learned or not (those are dimmed): the light
-//     side down the left (HEAL, MIND TRICK), the neutral powers across the top
-//     (SPEED, PUSH, PULL), the dark side down the right (GRIP, LIGHTNING); the
+//     side down the left, the neutral powers across the top, the dark side
+//     down the right (Jedi Outcast's seven, or Jedi Academy's twelve); the
 //     gap at the bottom cancels. Slide toward a power, or onto it, and lift to
 //     select it; lift in the middle, the gap or back where you started for no
 //     change. After a hold the wheel stays open: tap a power, or anywhere
@@ -99,11 +99,12 @@
 
 // The wheel's slices, in the game's showPowers order (forceselect's index):
 // the middle of each, degrees counter-clockwise from pointing right (90: up),
-// each IOSTOUCH_WHEEL_SLICE_DEG wide, and its group's colour
-#define IOSTOUCH_WHEEL_MAX 7
-#define IOSTOUCH_WHEEL_SLICE_DEG 32.0
-#define IOSTOUCH_WHEEL_GAP_DEG 4.0
+// each the map's sliceDeg wide, and its group's colour
+#define IOSTOUCH_WHEEL_MAX 12
 typedef struct { const char *name; float deg; unsigned char r, g, b; } iosTouchWheelSlice;
+#ifdef JK2_MODE
+// Jedi Outcast's seven (showPowers order: heal, speed, push, pull, mind trick, grip, lightning)
+#define IOSTOUCH_FORCE_SLICE_DEG 32.0f
 static const iosTouchWheelSlice iosTouch_aForceSlices[] = {
 	{ "HEAL",       198.0f, 120, 200, 255 }, // light side, down the left
 	{ "SPEED",      126.0f, 255, 214, 120 }, // neutral, across the top
@@ -113,6 +114,27 @@ static const iosTouchWheelSlice iosTouch_aForceSlices[] = {
 	{ "GRIP",        18.0f, 255, 105,  90 }, // dark side, down the right
 	{ "LIGHTNING",  -18.0f, 255, 105,  90 },
 };
+#else
+// Jedi Academy's twelve, in its showPowers order (absorb, heal, protect, mind
+// trick; speed, push, pull, sight; drain, lightning, rage, grip): the light
+// side down the left, the neutral powers across the top, the dark side down
+// the right, each group from the top
+#define IOSTOUCH_FORCE_SLICE_DEG 22.0f
+static const iosTouchWheelSlice iosTouch_aForceSlices[] = {
+	{ "ABSORB",      217.0f, 120, 200, 255 },
+	{ "HEAL",        151.0f, 120, 200, 255 },
+	{ "PROTECT",     195.0f, 120, 200, 255 },
+	{ "MIND\nTRICK", 173.0f, 120, 200, 255 },
+	{ "SPEED",       123.0f, 255, 214, 120 },
+	{ "PUSH",        101.0f, 255, 214, 120 },
+	{ "PULL",         79.0f, 255, 214, 120 },
+	{ "SIGHT",        57.0f, 255, 214, 120 },
+	{ "DRAIN",       -15.0f, 255, 105,  90 },
+	{ "LIGHT-\nNING",  7.0f, 255, 105,  90 },
+	{ "RAGE",        -37.0f, 255, 105,  90 },
+	{ "GRIP",         29.0f, 255, 105,  90 },
+};
+#endif
 // The items, in the game's order (INV_ELECTROBINOCULARS..INV_SENTRY: invselect's index)
 static const iosTouchWheelSlice iosTouch_aItemSlices[] = {
 	{ "BINOCU-\nLARS", 162.0f, 140, 220, 160 },
@@ -127,6 +149,8 @@ static const iosTouchWheelSlice iosTouch_aItemSlices[] = {
 typedef struct {
 	const iosTouchWheelSlice *aSlices;
 	int numSlices;
+	float sliceDeg;          // each slice's width
+	float gapDeg;            // between slices (the gap at the bottom is what's left)
 	const char *infoCvar;
 	const char *selectCmd;
 	const char *afterSelect; // a command line, or NULL
@@ -138,11 +162,11 @@ typedef struct {
 } iosTouchWheelMap;
 #define IOSTOUCH_COUNT( a ) ( (int)( sizeof( a ) / sizeof( ( a )[0] ) ) )
 static const iosTouchWheelMap iosTouch_forceWheel = {
-	iosTouch_aForceSlices, IOSTOUCH_COUNT( iosTouch_aForceSlices ), "cg_iosforce", "forceselect", NULL, 0,
+	iosTouch_aForceSlices, IOSTOUCH_COUNT( iosTouch_aForceSlices ), IOSTOUCH_FORCE_SLICE_DEG, 4.0f, "cg_iosforce", "forceselect", NULL, 0,
 	"FORCE", "not learned yet", "lift to select", "NO POWERS", "none learned yet"
 };
 static const iosTouchWheelMap iosTouch_itemWheel = {
-	iosTouch_aItemSlices, IOSTOUCH_COUNT( iosTouch_aItemSlices ), "cg_iosinv", "invselect", "invuse\n", 1,
+	iosTouch_aItemSlices, IOSTOUCH_COUNT( iosTouch_aItemSlices ), 32.0f, 4.0f, "cg_iosinv", "invselect", "invuse\n", 1,
 	"ITEMS", "not carried", "lift to use", "NO ITEMS", "none carried"
 };
 
@@ -159,7 +183,7 @@ typedef struct {
 
 enum {
 	BTN_FIRE, BTN_ALT, BTN_JUMP, BTN_CROUCH, BTN_USE, BTN_FORCE,
-	BTN_NEXTWPN, BTN_WHEEL, BTN_ITEM, BTN_VIEW, BTN_GYRO, BTN_SETTINGS,
+	BTN_NEXTWPN, BTN_WHEEL, BTN_ITEM, BTN_STYLE, BTN_VIEW, BTN_GYRO, BTN_SETTINGS,
 	BTN_QUICKSAVE, BTN_QUICKLOAD, BTN_MENU,
 	BTN_COUNT
 };
@@ -173,6 +197,7 @@ static iosTouchButton iosTouch_aButtons[BTN_COUNT] = {
 	[BTN_NEXTWPN]   = { "NEXT\nWPN",   KIND_TAP,  "weapnext\n", 22.0f, 0 },
 	[BTN_WHEEL]     = { "FORCE\nWHEEL", KIND_WHEEL, "forcenext\n", 22.0f, 0 },
 	[BTN_ITEM]      = { "ITEM",        KIND_WHEEL, "invuse\n",  22.0f, 0 },
+	[BTN_STYLE]     = { "STYLE",       KIND_TAP,  "saberAttackCycle\n", 22.0f, 0 },
 	[BTN_VIEW]      = { "VIEW",        KIND_TAP,  "cg_thirdperson !\n", 22.0f, 0 },
 	[BTN_GYRO]      = { "GYRO",        KIND_GYRO, NULL,         22.0f, 0 },
 	[BTN_SETTINGS]  = { "⚙︎",           KIND_SETTINGS, NULL,     22.0f, 0 },
@@ -213,7 +238,7 @@ static CGFloat iosTouch_AngleDiff( CGFloat a, CGFloat b )
 static int iosTouch_WheelSliceForAngle( const iosTouchWheelMap *m, CGFloat deg )
 {
 	for ( int i = 0; i < m->numSlices; i++ ) {
-		if ( fabs( iosTouch_AngleDiff( deg, m->aSlices[i].deg ) ) <= ( IOSTOUCH_WHEEL_SLICE_DEG + IOSTOUCH_WHEEL_GAP_DEG ) * 0.5 )
+		if ( fabs( iosTouch_AngleDiff( deg, m->aSlices[i].deg ) ) <= ( m->sliceDeg + m->gapDeg ) * 0.5 )
 			return i;
 	}
 	return IOSTOUCH_WHEEL_CANCEL;
@@ -581,8 +606,8 @@ static UIView *IOSTouch_MakeCircle( CGFloat r, CGFloat alpha )
 	iosTouch_aButtons[BTN_FORCE].x = iosTouch_aButtons[BTN_USE].x - 20;
 	iosTouch_aButtons[BTN_FORCE].y = iosTouch_aButtons[BTN_JUMP].y - 72;
 
-	const int aTopLeft[6] = { BTN_NEXTWPN, BTN_WHEEL, BTN_ITEM, BTN_VIEW, BTN_GYRO, BTN_SETTINGS };
-	for ( int i = 0; i < 6; i++ ) {
+	const int aTopLeft[7] = { BTN_NEXTWPN, BTN_WHEEL, BTN_ITEM, BTN_STYLE, BTN_VIEW, BTN_GYRO, BTN_SETTINGS };
+	for ( int i = 0; i < 7; i++ ) {
 		iosTouch_aButtons[aTopLeft[i]].x = left + 24 + 58 * i;
 		iosTouch_aButtons[aTopLeft[i]].y = top + 26;
 	}
@@ -817,7 +842,7 @@ static UIBezierPath *IOSTouch_WedgePath( CGPoint c, CGFloat deg0, CGFloat deg1, 
 		const iosTouchWheelSlice *sl = &pWheel->aSlices[i];
 		int bLearned = ( wheelLearned >> i ) & 1;
 		int bHot = i == hot;
-		CGFloat half = IOSTOUCH_WHEEL_SLICE_DEG * 0.5;
+		CGFloat half = pWheel->sliceDeg * 0.5 - 1.0;
 		aSliceLayers[i].path = IOSTouch_WedgePath( wheelCentre, sl->deg - half, sl->deg + half, wheelR0,
 		                                           wheelR1 + ( bHot && bLearned ? 10.0 : 0.0 ) ).CGPath;
 		UIColor *full = [UIColor colorWithRed:sl->r / 255.0 green:sl->g / 255.0 blue:sl->b / 255.0 alpha:1.0];

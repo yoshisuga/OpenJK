@@ -11,14 +11,26 @@ set -e
 : "${IOS_CODESIGN_IDENTITY:?}" "${IOS_TEAM_ID:?}" "${IOS_BUNDLE_ID:?}" "${IOS_PROVISIONING_PROFILE:?}"
 OJK=$(cd "$(dirname "$0")/.." && pwd)
 WS=$(dirname "$OJK")
-B=$WS/build/device/openjk
-APP=$WS/build/device/OpenJO.app
+# the game: jo (Jedi Outcast, OpenJO.app) or ja (Jedi Academy, OpenJA.app)
+GAME=${1:-jo}
+if [ "$GAME" = ja ]; then
+	B=$WS/build/device/openjk-ja
+	APP=$WS/build/device/OpenJA.app
+	EXE=openjk_sp.arm64 RENDERER=rdsp-vanilla_arm64.dylib GAMELIB=code/game/jagamearm64.dylib NAME=OpenJA
+else
+	B=$WS/build/device/openjk
+	APP=$WS/build/device/OpenJO.app
+	EXE=openjo_sp.arm64 RENDERER=rdjosp-vanilla_arm64.dylib GAMELIB=codeJK2/game/jospgamearm64.dylib NAME=OpenJO
+fi
 rm -rf "$APP"
 mkdir -p "$APP"
-cp "$B/openjo_sp.arm64.app/openjo_sp.arm64" "$APP/"
-cp "$B/code/rd-vanilla/rdjosp-vanilla_arm64.dylib" "$APP/"
-cp "$B/codeJK2/game/jospgamearm64.dylib" "$APP/"
-sed -e "s/org.openjk.openjo.spike/$IOS_BUNDLE_ID/" -e "s/iPhoneSimulator/iPhoneOS/" "$OJK/ios/Info.plist" > "$APP/Info.plist"
+cp "$B/$EXE.app/$EXE" "$APP/"
+cp "$B/code/rd-vanilla/$RENDERER" "$APP/"
+cp "$B/$GAMELIB" "$APP/"
+# Jedi Academy's bundle ID: IOS_BUNDLE_ID_JA, or IOS_BUNDLE_ID's last part
+# made "openja" (com.example.openjo -> com.example.openja)
+if [ "$GAME" = ja ]; then BUNDLE_ID=${IOS_BUNDLE_ID_JA:-${IOS_BUNDLE_ID%.*}.openja}; else BUNDLE_ID=$IOS_BUNDLE_ID; fi
+sed -e "s/org.openjk.openjo.spike/$BUNDLE_ID/" -e "s/iPhoneSimulator/iPhoneOS/" -e "s/openjo_sp.arm64/$EXE/" -e "s/>OpenJO</>$NAME</g" "$OJK/ios/Info.plist" > "$APP/Info.plist"
 cp "$IOS_PROVISIONING_PROFILE" "$APP/embedded.mobileprovision"
 # The app identifier uses the profile's App ID prefix, which on older teams
 # isn't the team ID
@@ -28,12 +40,12 @@ cat > "$ENT" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-	<key>application-identifier</key><string>$PREFIX.$IOS_BUNDLE_ID</string>
+	<key>application-identifier</key><string>$PREFIX.$BUNDLE_ID</string>
 	<key>com.apple.developer.team-identifier</key><string>$IOS_TEAM_ID</string>
 	<key>get-task-allow</key><true/>
 </dict></plist>
 PLIST
-codesign --force --sign "$IOS_CODESIGN_IDENTITY" --timestamp=none "$APP/rdjosp-vanilla_arm64.dylib"
-codesign --force --sign "$IOS_CODESIGN_IDENTITY" --timestamp=none "$APP/jospgamearm64.dylib"
+codesign --force --sign "$IOS_CODESIGN_IDENTITY" --timestamp=none "$APP/$RENDERER"
+codesign --force --sign "$IOS_CODESIGN_IDENTITY" --timestamp=none "$APP/$(basename "$GAMELIB")"
 codesign --force --sign "$IOS_CODESIGN_IDENTITY" --timestamp=none --entitlements "$ENT" "$APP"
 echo "Built $APP"

@@ -1,9 +1,11 @@
 #!/bin/sh
-# Builds Jedi Outcast single player (OpenJK's JK2 SP: engine, renderer, game)
-# for iOS, then lays out OpenJO.app.
+# Builds OpenJK single player for iOS -- Jedi Outcast (JK2 SP: OpenJO.app) or
+# Jedi Academy (JA SP: OpenJA.app) -- then lays out the app.
 #
-#   ios/build.sh device     # an iPhone / iPad (signed: see package-device.sh)
-#   ios/build.sh sim        # the iOS Simulator (ad-hoc signed)
+#   ios/build.sh device [jo|ja]   # an iPhone / iPad (signed: see package-device.sh)
+#   ios/build.sh sim [jo|ja]      # the iOS Simulator (ad-hoc signed)
+#
+# jo (Jedi Outcast) if no game is given.
 #
 # Everything is built next to this checkout, in its parent folder:
 #   ../SDL2    SDL 2.30 (cloned if missing)
@@ -11,7 +13,9 @@
 #   ../build/<device|sim>/   the builds, and OpenJO.app
 set -e
 SLICE=${1:-device}
-case "$SLICE" in device|sim) ;; *) echo "usage: $0 device|sim" >&2; exit 1 ;; esac
+GAME=${2:-jo}
+case "$SLICE" in device|sim) ;; *) echo "usage: $0 device|sim [jo|ja]" >&2; exit 1 ;; esac
+case "$GAME" in jo|ja) ;; *) echo "usage: $0 device|sim [jo|ja]" >&2; exit 1 ;; esac
 
 OJK=$(cd "$(dirname "$0")/.." && pwd)
 WS=$(dirname "$OJK")
@@ -28,7 +32,7 @@ fresh() {
 		rm -rf "$1"
 	fi
 }
-for d in SDL2 gl4es openjk; do fresh "$B/$d"; done
+for d in SDL2 gl4es openjk openjk-ja; do fresh "$B/$d"; done
 [ -f "$B/SDL2/CMakeCache.txt" ] || rm -rf "$P"
 
 [ -d SDL2 ] || git clone --depth 1 -b release-2.30.x https://github.com/libsdl-org/SDL.git SDL2
@@ -47,16 +51,21 @@ cmake -S gl4es -B "$B/gl4es" -G Ninja --toolchain "$TC" -DCMAKE_BUILD_TYPE=Relea
 	-DNOX11=ON -DNOEGL=ON -DSTATICLIB=ON -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY="$B/gl4es/lib"
 cmake --build "$B/gl4es" --target GL
 
-# OpenJK: Jedi Outcast single player only
-cmake -S "$OJK" -B "$B/openjk" -G Ninja --toolchain "$TC" -DCMAKE_BUILD_TYPE=Release \
+# OpenJK: one game's single player (engine, renderer, game library)
+if [ "$GAME" = jo ]; then
+	OUT=$B/openjk
+	GAMEFLAGS="-DBuildSPEngine=OFF -DBuildSPGame=OFF -DBuildSPRdVanilla=OFF -DBuildJK2SPEngine=ON -DBuildJK2SPGame=ON -DBuildJK2SPRdVanilla=ON"
+else
+	OUT=$B/openjk-ja
+	GAMEFLAGS="-DBuildSPEngine=ON -DBuildSPGame=ON -DBuildSPRdVanilla=ON -DBuildJK2SPEngine=OFF -DBuildJK2SPGame=OFF -DBuildJK2SPRdVanilla=OFF"
+fi
+cmake -S "$OJK" -B "$OUT" -G Ninja --toolchain "$TC" -DCMAKE_BUILD_TYPE=Release \
 	-DBuildMPEngine=OFF -DBuildMPRdVanilla=OFF -DBuildMPDed=OFF -DBuildMPGame=OFF \
-	-DBuildMPCGame=OFF -DBuildMPUI=OFF -DBuildMPRend2=OFF \
-	-DBuildSPEngine=OFF -DBuildSPGame=OFF -DBuildSPRdVanilla=OFF \
-	-DBuildJK2SPEngine=ON -DBuildJK2SPGame=ON -DBuildJK2SPRdVanilla=ON \
+	-DBuildMPCGame=OFF -DBuildMPUI=OFF -DBuildMPRend2=OFF $GAMEFLAGS \
 	-DUseInternalZlib=OFF -DUseInternalPNG=ON -DUseInternalJPEG=ON \
 	-DUseInternalSDL2=OFF -DUseInternalOpenAL=OFF \
 	-DCMAKE_PREFIX_PATH="$P" -DSDL2_DIR="$P/lib/cmake/SDL2" \
 	-DGL4ES_DIR="$WS/gl4es" -DGL4ES_LIBRARY="$B/gl4es/lib/libGL.a"
-cmake --build "$B/openjk"
+cmake --build "$OUT"
 
-"$OJK/ios/package-$SLICE.sh"
+"$OJK/ios/package-$SLICE.sh" "$GAME"

@@ -3738,6 +3738,99 @@ qboolean ForcePower_Valid(int index)
 	return qfalse;
 }
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+/*
+===============
+iOS: for the touch overlay's force and item wheels (shared/ios/ios_touch.m),
+which are in the engine and can't see cg. "forceselect <n>" selects
+showPowers[n], if learned; "invselect <n>" selects inventory item n
+(INV_ELECTROBINOCULARS..INV_SENTRY), if carried. cg_iosforce ("<learned
+mask> <selected> <level per power>", showPowers order) and cg_iosinv
+("<carried mask> <selected> <count per item>") tell the overlay what there is.
+===============
+*/
+void CG_SelectForcePower_f( void )
+{
+	if ( !cg.snap )
+	{
+		return;
+	}
+	const int n = atoi( CG_Argv( 1 ) );
+	if ( n < 0 || n >= MAX_SHOWPOWERS || !ForcePower_Valid( n ) )
+	{
+		return;
+	}
+	cg.forcepowerSelect = n;
+	SetForcePowerTime();	// shows the HUD's force selection for a moment
+	cgi_S_StartSound( NULL, 0, CHAN_AUTO, cgs.media.selectSound2 );
+}
+
+void CG_SelectInventory_f( void )
+{
+	if ( !cg.snap )
+	{
+		return;
+	}
+	const int n = atoi( CG_Argv( 1 ) );
+	if ( n < INV_ELECTROBINOCULARS || n > INV_SENTRY || !cg.snap->ps.inventory[n] )
+	{
+		return;
+	}
+	cg.inventorySelect = n;
+	SetInventoryTime();	// shows the HUD's inventory for a moment
+	cgi_S_StartSound( NULL, 0, CHAN_AUTO, cgs.media.selectSound2 );
+}
+
+void CG_IosUpdateForceInfo( void )
+{
+	static char last[96], lastInv[64];
+	char buf[96];
+	gentity_t *player = &g_entities[0];
+
+	if ( !cg.snap || !player->client )
+	{
+		return;
+	}
+	int mask = 0;
+	for ( int i = 0; i < MAX_SHOWPOWERS; i++ )
+	{
+		if ( ForcePower_Valid( i ) )
+		{
+			mask |= 1 << i;
+		}
+	}
+	Com_sprintf( buf, sizeof( buf ), "%d %d", mask, cg.forcepowerSelect );
+	for ( int i = 0; i < MAX_SHOWPOWERS; i++ )
+	{
+		Q_strcat( buf, sizeof( buf ), va( " %d", player->client->ps.forcePowerLevel[showPowers[i]] ) );
+	}
+	if ( strcmp( buf, last ) )
+	{
+		Q_strncpyz( last, buf, sizeof( last ) );
+		cgi_Cvar_Set( "cg_iosforce", buf );
+	}
+
+	int carried = 0;
+	for ( int i = INV_ELECTROBINOCULARS; i <= INV_SENTRY; i++ )
+	{
+		if ( cg.snap->ps.inventory[i] )
+		{
+			carried |= 1 << i;
+		}
+	}
+	Com_sprintf( buf, sizeof( buf ), "%d %d", carried, cg.inventorySelect );
+	for ( int i = INV_ELECTROBINOCULARS; i <= INV_SENTRY; i++ )
+	{
+		Q_strcat( buf, sizeof( buf ), va( " %d", cg.snap->ps.inventory[i] ) );
+	}
+	if ( strcmp( buf, lastInv ) )
+	{
+		Q_strncpyz( lastInv, buf, sizeof( lastInv ) );
+		cgi_Cvar_Set( "cg_iosinv", buf );
+	}
+}
+#endif
+
 /*
 ===============
 CG_NextForcePower_f

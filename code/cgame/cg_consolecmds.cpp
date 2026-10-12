@@ -228,8 +228,14 @@ static consoleCommand_t	commands[] = {
 	{ "dpweapprev",			CG_DPPrevWeapon_f },
 	{ "forcenext",			CG_NextForcePower_f },
 	{ "forceprev",			CG_PrevForcePower_f },
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	{ "forceselect",		CG_SelectForcePower_f },	// iOS: the touch overlay's force wheel
+#endif
 	{ "invnext",			CG_NextInventory_f },
 	{ "invprev",			CG_PrevInventory_f },
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	{ "invselect",			CG_SelectInventory_f },	// iOS: the touch overlay's item wheel
+#endif
 	{ "la_zoom",			CG_ToggleLAGoggles },
 	{ "loadhud",			CG_LoadHud_f },
 	{ "lock_disable",		Lock_Disable },	//player can move now

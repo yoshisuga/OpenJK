@@ -1989,6 +1989,9 @@ extern void CG_ClearHealthBarEnts( void );
 extern vec3_t	serverViewOrg;
 static qboolean cg_rangedFogging = qfalse; //so we know if we should go back to normal fog
 void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	CG_IosUpdateForceInfo();	// iOS: for the touch overlay's force and item wheels
+#endif
 	qboolean	inwater = qfalse;
 
 	cg.time = serverTime;
