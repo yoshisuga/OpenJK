@@ -27,8 +27,13 @@ cd "$WS"
 # A build folder set up with another toolchain file can't be reused: start
 # it again
 # (CMake keeps the one it was first set up with in CMakeSystem.cmake)
+# -- and nor can one set up with an SDK that's gone (a newer Xcode replaced it)
 fresh() {
 	if [ -d "$1/CMakeFiles" ] && ! grep -qs "include(\"$TC\")" "$1"/CMakeFiles/*/CMakeSystem.cmake; then
+		rm -rf "$1"
+	fi
+	SDK=$(grep -so '/Applications/[^;:]*\.sdk' "$1/CMakeCache.txt" | head -1)
+	if [ -n "$SDK" ] && [ ! -d "$SDK" ]; then
 		rm -rf "$1"
 	fi
 }

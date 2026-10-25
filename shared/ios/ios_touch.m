@@ -297,6 +297,28 @@ static os_unfair_lock iosTouch_gyroLock = OS_UNFAIR_LOCK_INIT;
 static double iosTouch_gyroRightDeg = 0.0, iosTouch_gyroUpDeg = 0.0;
 static int iosTouch_gyroGen = 0;
 static volatile long iosTouch_gyroOrientation = UIInterfaceOrientationLandscapeRight;
+// How the device's motion axes sit against the screen, in quarter turns
+// (0: as on an iPhone, where the screen's portrait is the body's), or -1
+// until gravity has said: some devices' screens are turned against their
+// body, and a quarter turn off, sideways turns would read as tilts. Decided
+// (on the samples' queue only) by which quarter turn has the screen's top
+// pointing up for IOSTOUCH_GYRO_QUARTER_VOTES samples running, the phone
+// held well off flat; decided again when the gyro starts or the screen turns
+// round (iosTouch_gyroQuarterOrientation: the orientation it was decided for).
+static int iosTouch_gyroQuarter = -1, iosTouch_gyroQuarterVote = -1, iosTouch_gyroQuarterVotes = 0;
+static long iosTouch_gyroQuarterOrientation = -1;
+#define IOSTOUCH_GYRO_QUARTER_VOTES 15
+
+// A device-axes vector (x, y) as the screen's (right, up), for this orientation
+static void iosTouch_GyroToScreen( long orientation, double x, double y, double *pRight, double *pUp )
+{
+	switch ( orientation ) {
+		case UIInterfaceOrientationLandscapeRight: *pRight = -y; *pUp = x; break; // the phone's top on the left
+		case UIInterfaceOrientationLandscapeLeft:  *pRight = y; *pUp = -x; break; // the phone's top on the right
+		case UIInterfaceOrientationPortraitUpsideDown: *pRight = -x; *pUp = -y; break;
+		default: *pRight = x; *pUp = y; break;
+	}
+}
 
 // How far one motion sample turns the view, in degrees (right, up), dt
 // seconds after the last. The device's axes become the screen's (x right, y
@@ -309,21 +331,38 @@ static void iosTouch_GyroSample( CMDeviceMotion *m, double dt, double *pRight, d
 {
 	CMRotationRate r = m.rotationRate;
 	CMAcceleration g = m.gravity;
-	double rx, ry, gx, gy;
-	switch ( iosTouch_gyroOrientation ) {
-		case UIInterfaceOrientationLandscapeRight: // the phone's top on the left
-			rx = -r.y; ry = r.x; gx = -g.y; gy = g.x;
-			break;
-		case UIInterfaceOrientationLandscapeLeft:  // the phone's top on the right
-			rx = r.y; ry = -r.x; gx = g.y; gy = -g.x;
-			break;
-		case UIInterfaceOrientationPortraitUpsideDown:
-			rx = -r.x; ry = -r.y; gx = -g.x; gy = -g.y;
-			break;
-		default:
-			rx = r.x; ry = r.y; gx = g.x; gy = g.y;
-			break;
+	const long orientation = iosTouch_gyroOrientation;
+	double wx = r.x, wy = r.y, dgx = g.x, dgy = g.y;
+
+	// How the device's axes sit against the screen: the quarter turn that has
+	// the screen's top up (gravity pointing down the screen)
+	double gl0 = sqrt( dgx * dgx + dgy * dgy + g.z * g.z );
+	if ( orientation != iosTouch_gyroQuarterOrientation ) {
+		iosTouch_gyroQuarter = iosTouch_gyroQuarterVote = -1;
+		iosTouch_gyroQuarterVotes = 0;
+		iosTouch_gyroQuarterOrientation = orientation;
 	}
+	if ( iosTouch_gyroQuarter < 0 && gl0 > 0.5 && sqrt( dgx * dgx + dgy * dgy ) / gl0 > 0.6 ) {
+		int best = 0;
+		double bestUp = -1e9, x = dgx, y = dgy;
+		for ( int k = 0; k < 4; k++ ) {
+			double right, up;
+			iosTouch_GyroToScreen( orientation, x, y, &right, &up );
+			if ( -up > bestUp ) { bestUp = -up; best = k; } // the screen's top up: gravity down it
+			double t = x; x = -y; y = t; // the next quarter turn: (x, y) -> (-y, x)
+		}
+		iosTouch_gyroQuarterVotes = ( best == iosTouch_gyroQuarterVote ) ? iosTouch_gyroQuarterVotes + 1 : 1;
+		iosTouch_gyroQuarterVote = best;
+		if ( iosTouch_gyroQuarterVotes >= IOSTOUCH_GYRO_QUARTER_VOTES ) iosTouch_gyroQuarter = best;
+	}
+	for ( int k = 0; k < ( iosTouch_gyroQuarter > 0 ? iosTouch_gyroQuarter : 0 ); k++ ) {
+		double t = wx; wx = -wy; wy = t;
+		t = dgx; dgx = -dgy; dgy = t;
+	}
+
+	double rx, ry, gx, gy;
+	iosTouch_GyroToScreen( orientation, wx, wy, &rx, &ry );
+	iosTouch_GyroToScreen( orientation, dgx, dgy, &gx, &gy );
 	double rz = r.z, gz = g.z;
 
 	// radians a second; positive: turning left, and tipping the top edge
@@ -359,8 +398,10 @@ static void iosTouch_StartGyro( void )
 	iosTouch_gyroRightDeg = iosTouch_gyroUpDeg = 0.0;
 	os_unfair_lock_unlock( &iosTouch_gyroLock );
 
-	// only this queue's blocks touch lastT, one at a time
+	// only this queue's blocks touch lastT and the quarter turn, one at a
+	// time; the quarter turn is decided again (the queue is idle here)
 	__block NSTimeInterval lastT = 0.0;
+	iosTouch_gyroQuarterOrientation = -1;
 	iosTouch_pMotion.deviceMotionUpdateInterval = 1.0 / IOSTOUCH_GYRO_HZ;
 	[iosTouch_pMotion startDeviceMotionUpdatesToQueue:iosTouch_pMotionQueue withHandler:^( CMDeviceMotion *m, NSError *err ) {
 		if ( !m ) return;
