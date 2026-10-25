@@ -1,0 +1,115 @@
+diff --git a/src/video/uikit/SDL_uikitappdelegate.h b/src/video/uikit/SDL_uikitappdelegate.h
+index df3ff0f..3cf93b2 100644
+--- a/src/video/uikit/SDL_uikitappdelegate.h
++++ b/src/video/uikit/SDL_uikitappdelegate.h
+@@ -29,6 +29,17 @@
+ 
+ @end
+ 
++/* UIScene lifecycle (iOS 27 requires it of apps built with its SDK): the
++ * window scene once it has connected, which windows are made on, or nil;
++ * SDL_UIKitWaitForWindowScene() runs the run loop until it has (a few seconds
++ * at most) and returns it. */
++extern UIWindowScene *SDL_uikitWindowScene;
++UIWindowScene *SDL_UIKitWaitForWindowScene(void);
++
++@interface SDLUIKitSceneDelegate : UIResponder<UIWindowSceneDelegate>
++@property (nonatomic) UIWindow *window;
++@end
++
+ @interface SDLUIKitDelegate : NSObject<UIApplicationDelegate>
+ 
+ + (id)sharedAppDelegate;
+diff --git a/src/video/uikit/SDL_uikitappdelegate.m b/src/video/uikit/SDL_uikitappdelegate.m
+index 31b114a..8382258 100644
+--- a/src/video/uikit/SDL_uikitappdelegate.m
++++ b/src/video/uikit/SDL_uikitappdelegate.m
+@@ -349,10 +349,58 @@ - (NSUInteger)supportedInterfaceOrientations
+ 
+ @end
+ 
++/* ---- UIScene lifecycle ---- */
++
++UIWindowScene *SDL_uikitWindowScene = nil;
++
++@implementation SDLUIKitSceneDelegate
++
++- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions
++{
++    if ([scene isKindOfClass:[UIWindowScene class]]) {
++        SDL_uikitWindowScene = (UIWindowScene *)scene;
++    }
++}
++
++- (void)sceneDidDisconnect:(UIScene *)scene
++{
++    if (scene == SDL_uikitWindowScene) {
++        SDL_uikitWindowScene = nil;
++    }
++}
++
++@end
++
++UIWindowScene *SDL_UIKitWaitForWindowScene(void)
++{
++    /* SDL_main starts right after launching, possibly before the scene has
++     * connected: run the run loop (which delivers that) until it has */
++    for (int i = 0; i < 500 && !SDL_uikitWindowScene; i++) {
++        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, TRUE);
++    }
++    if (!SDL_uikitWindowScene) {
++        /* (one already connected before this delegate saw it) */
++        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
++            if ([scene isKindOfClass:[UIWindowScene class]]) {
++                SDL_uikitWindowScene = (UIWindowScene *)scene;
++                break;
++            }
++        }
++    }
++    return SDL_uikitWindowScene;
++}
++
+ @implementation SDLUIKitDelegate {
+     UIWindow *launchWindow;
+ }
+ 
++- (UISceneConfiguration *)application:(UIApplication *)application configurationForConnectingSceneSession:(UISceneSession *)connectingSceneSession options:(UISceneConnectionOptions *)options
++{
++    UISceneConfiguration *config = [[UISceneConfiguration alloc] initWithName:@"SDLSceneConfiguration" sessionRole:connectingSceneSession.role];
++    config.delegateClass = [SDLUIKitSceneDelegate class];
++    return config;
++}
++
+ /* convenience method */
+ + (id)sharedAppDelegate
+ {
+@@ -447,7 +495,9 @@ - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(
+         vc = [[SDLLaunchScreenController alloc] initWithNibName:screenname bundle:bundle];
+     }
+ 
+-    if (vc.view) {
++    /* (Not with the UIScene lifecycle: no scene to put it on yet, and the
++     * system's launch screen is up until the first window anyway.) */
++    if (vc.view && ![bundle objectForInfoDictionaryKey:@"UIApplicationSceneManifest"]) {
+         launchWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+ 
+         /* We don't want the launch window immediately hidden when a real SDL
+diff --git a/src/video/uikit/SDL_uikitwindow.m b/src/video/uikit/SDL_uikitwindow.m
+index 8ce26a5..0e4167c 100644
+--- a/src/video/uikit/SDL_uikitwindow.m
++++ b/src/video/uikit/SDL_uikitwindow.m
+@@ -207,7 +207,13 @@ int UIKit_CreateWindow(_THIS, SDL_Window *window)
+ 
+         /* ignore the size user requested, and make a fullscreen window */
+         /* !!! FIXME: can we have a smaller view? */
+-        uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
++        if (data.uiscreen == [UIScreen mainScreen] && SDL_UIKitWaitForWindowScene()) {
++            /* the UIScene lifecycle: on the connected window scene */
++            uiwindow = [[SDL_uikitwindow alloc] initWithWindowScene:SDL_uikitWindowScene];
++            uiwindow.frame = SDL_uikitWindowScene.coordinateSpace.bounds;
++        } else {
++            uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
++        }
+ 
+         /* put the window on an external display if appropriate. */
+         if (data.uiscreen != [UIScreen mainScreen]) {

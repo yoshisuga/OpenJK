@@ -43,12 +43,25 @@ for d in SDL2 gl4es openjk openjk-ja; do fresh "$B/$d"; done
 [ -d SDL2 ] || git clone --depth 1 -b release-2.30.x https://github.com/libsdl-org/SDL.git SDL2
 [ -d gl4es ] || git clone https://github.com/yoshisuga/gl4es.git gl4es
 
+# SDL2 with the UIScene lifecycle (ios/sdl2-uiscene.patch): iOS 27 stops apps
+# built with its SDK that haven't adopted it. Applied once; SDL2 is built
+# again whenever the patch changes (its hash is kept next to the build).
+PATCH=$OJK/ios/sdl2-uiscene.patch
+if git -C SDL2 apply --check "$PATCH" 2>/dev/null; then
+	git -C SDL2 apply "$PATCH"
+fi
+PATCHSUM=$(shasum "$PATCH" | cut -d' ' -f1)
+if [ "$(cat "$P/.sdl2-patch" 2>/dev/null)" != "$PATCHSUM" ]; then
+	rm -rf "$P" "$B/SDL2"
+fi
+
 # SDL2, static
 if [ ! -f "$P/lib/libSDL2.a" ]; then
 	cmake -S SDL2 -B "$B/SDL2" -G Ninja --toolchain "$TC" -DCMAKE_BUILD_TYPE=Release \
 		-DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST=OFF -DCMAKE_INSTALL_PREFIX="$P"
 	cmake --build "$B/SDL2"
 	cmake --install "$B/SDL2"
+	echo "$PATCHSUM" > "$P/.sdl2-patch"
 fi
 
 # gl4es (desktop GL 1.x on OpenGL ES 2), static, linked into the renderer only
