@@ -24,7 +24,7 @@ cp "$B/code/rd-vanilla/$RENDERER" "$APP/"
 cp "$B/$GAMELIB" "$APP/"
 sed -e "s/org.openjk.openjo.spike/$BUNDLE_ID/" -e "s/iPhoneSimulator/iPhoneOS/" -e "s/openjo_sp.arm64/$EXE/" -e "s/>OpenJO</>$NAME</g" "$OJK/ios/Info.plist" > "$APP/Info.plist"
 if [ -n "$IOS_VERSION" ]; then
-	plutil -replace CFBundleShortVersionString -string "$IOS_VERSION" "$APP/Info.plist"
+	plutil -replace CFBundleShortVersionString -string "${IOS_VERSION#v}" "$APP/Info.plist"
 fi
 if [ -n "$IOS_BUILD_NUMBER" ]; then
 	plutil -replace CFBundleVersion -string "$IOS_BUILD_NUMBER" "$APP/Info.plist"
