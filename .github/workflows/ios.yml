@@ -3,10 +3,14 @@
 # (AltStore, SideStore, Sideloadly). No game data is included.
 #
 # - A push to an iOS branch builds both and keeps them as run artifacts only.
-# - A pushed v* tag (for example v0.1), or a manual run with release=<tag>, also
+# - A pushed version tag (v0.1 or 0.1), or a manual run with release=<tag>, also
 #   publishes them as a GitHub prerelease with that tag, at the commit being
 #   built, with ios/RELEASE_NOTES.md as its text:
 #     gh workflow run ios.yml --ref <branch> -f release=v0.1
+# - A branch push also does that when ios/RELEASE_TAG names a tag, which
+#   attaches the IPAs to a release made on GitHub's release page (its tag
+#   push doesn't start this workflow when the workflow isn't on the default
+#   branch).
 name: iOS IPA
 
 on:
@@ -16,7 +20,8 @@ on:
       - 'claude/ios-**'
     # Release tags. Path filters don't apply to tag pushes, so a tag always builds.
     tags:
-      - 'v*'
+      - 'v[0-9]*'
+      - '[0-9]*'
     paths-ignore:
       - '**.md'
   workflow_dispatch:
@@ -39,15 +44,27 @@ jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 60
-    env:
-      # The pushed v* tag, or the tag a manual run asked for; empty otherwise.
-      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
         with:
           path: OpenJK
           fetch-depth: 1
+
+      # The pushed tag, the tag a manual run asked for, or the one in
+      # ios/RELEASE_TAG on a branch push; empty for a build only.
+      - name: Pick the release tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.release }}
+        run: |
+          if [ "$REF_TYPE" = tag ]; then T=$REF_NAME
+          elif [ -n "$INPUT_TAG" ]; then T=$INPUT_TAG
+          elif [ -f OpenJK/ios/RELEASE_TAG ]; then T=$(tr -d ' \r\n' < OpenJK/ios/RELEASE_TAG)
+          else T=; fi
+          echo "Release tag: ${T:-none}"
+          echo "RELEASE_TAG=$T" >> "$GITHUB_ENV"
 
       - name: Select newest Xcode
         run: |
@@ -65,16 +82,14 @@ jobs:
       - name: Build Jedi Outcast (OpenJO)
         env:
           IOS_PACKAGE: ipa
-          IOS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release || '0.0.1' }}
           IOS_BUILD_NUMBER: ${{ github.run_number }}
-        run: OpenJK/ios/build.sh device jo
+        run: IOS_VERSION=${RELEASE_TAG:-0.0.1} OpenJK/ios/build.sh device jo
 
       - name: Build Jedi Academy (OpenJA)
         env:
           IOS_PACKAGE: ipa
-          IOS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release || '0.0.1' }}
           IOS_BUILD_NUMBER: ${{ github.run_number }}
-        run: OpenJK/ios/build.sh device ja
+        run: IOS_VERSION=${RELEASE_TAG:-0.0.1} OpenJK/ios/build.sh device ja
 
       - name: Check the IPAs
         run: |
@@ -107,7 +122,6 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           target_commitish: ${{ github.sha }}
-          name: OpenJK for iOS ${{ env.RELEASE_TAG }}
           body_path: OpenJK/ios/RELEASE_NOTES.md
           prerelease: true
           make_latest: false

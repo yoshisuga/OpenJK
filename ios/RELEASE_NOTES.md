@@ -1,6 +1,6 @@
 Experimental iPhone and iPad builds of Jedi Outcast and Jedi Academy single player, on the OpenJK engine, with touch controls. No game data is included: you need your own copy of each game (GOG or Steam).
 
-### What's in v0.1
+### What's in 0.1
 
 Two apps, both unsigned (see How to install below). They install side by side, each with its own folder in the Files app. With a free Apple ID, each one counts toward the limit of 3 sideloaded apps.
 
