@@ -2,10 +2,27 @@ Experimental iPhone and iPad builds of Jedi Outcast and Jedi Academy single play
 
 ### What's in v0.1
 
-Two apps, both unsigned: sign and install them with a sideloading tool (AltStore, SideStore or Sideloadly). They install side by side, each with its own folder in the Files app. With a free Apple ID, each one counts toward the limit of 3 sideloaded apps.
+Two apps, both unsigned (see How to install below). They install side by side, each with its own folder in the Files app. With a free Apple ID, each one counts toward the limit of 3 sideloaded apps.
 
 - **OpenJO-iOS-unsigned.ipa**: Jedi Knight II: Jedi Outcast (the OpenJO app).
 - **OpenJA-iOS-unsigned.ipa**: Jedi Knight: Jedi Academy (the OpenJA app).
+
+### How to install
+
+1. **Download** OpenJO-iOS-unsigned.ipa and/or OpenJA-iOS-unsigned.ipa from the Assets list below.
+2. **Sign and install it with a sideloading tool.** The .ipa is unsigned, and an iPhone only runs apps signed with an Apple certificate, so you sign it yourself. Some common free tools:
+    - **[AltStore](https://altstore.io)** (AltStore Classic): install AltServer on a Mac or Windows PC and use it to put AltStore on your phone. Then in AltStore, go to *My Apps*, tap **+** and pick the .ipa. (AltStore PAL, the EU app marketplace, can't install this file.)
+    - **[SideStore](https://sidestore.io)**: a version of AltStore that, after a one-time setup with a computer, signs and refreshes apps on the phone itself. Tap **+** in *My Apps* and pick the .ipa.
+    - **[Sideloadly](https://sideloadly.io)**: a Mac or Windows program. Connect your phone, drop the .ipa in, sign in with your Apple ID, and it installs the app.
+3. **The first time, iOS may ask for two more things:**
+    - **Developer Mode:** go to *Settings > Privacy & Security > Developer Mode*, turn it on, restart the phone, and confirm.
+    - **"Untrusted Developer":** go to *Settings > General > VPN & Device Management*, tap your Apple ID under *Developer App*, and tap *Trust*.
+
+These tools ask for your Apple ID and password, because they sign the app with it. They're made by third parties, not Apple; some people use a separate Apple ID just for sideloading.
+
+**With a free Apple ID, apps stay signed for 7 days.** After that the app won't open until you refresh it (AltStore and SideStore can do this for you) or install it again. Your game files and saves are kept when you refresh.
+
+**Updating:** sideload the new .ipa with the same tool and Apple ID. It replaces the app and keeps your game files and saves.
 
 ### Game files
 
