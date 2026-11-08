@@ -86,4 +86,5 @@ cmake -S "$OJK" -B "$OUT" -G Ninja --toolchain "$TC" -DCMAKE_BUILD_TYPE=Release 
 	-DGL4ES_DIR="$WS/gl4es" -DGL4ES_LIBRARY="$B/gl4es/lib/libGL.a"
 cmake --build "$OUT"
 
-"$OJK/ios/package-$SLICE.sh" "$GAME"
+# IOS_PACKAGE=ipa packages an unsigned .ipa instead (ios/package-ipa.sh, for CI)
+"$OJK/ios/package-${IOS_PACKAGE:-$SLICE}.sh" "$GAME"

@@ -1,0 +1,113 @@
+# Builds OpenJO (Jedi Outcast) and OpenJA (Jedi Academy) for iOS (arm64 device)
+# and packages each as an UNSIGNED .ipa, for a sideloading tool to sign
+# (AltStore, SideStore, Sideloadly). No game data is included.
+#
+# - A push to an iOS branch builds both and keeps them as run artifacts only.
+# - A manual run with release=<tag> (for example v0.1) also publishes them as a
+#   GitHub prerelease with that tag, at the commit being built, with
+#   ios/RELEASE_NOTES.md as its text:
+#     gh workflow run ios.yml --ref <branch> -f release=v0.1
+name: iOS IPA
+
+on:
+  push:
+    branches:
+      - ios-spike
+      - 'claude/ios-**'
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: >-
+          Publish this build as a prerelease with this tag (for example v0.1).
+          Leave empty to build only.
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ inputs.release != '' && format('ios-release-{0}', inputs.release) || format('ios-{0}', github.ref) }}
+  cancel-in-progress: ${{ inputs.release == '' }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ inputs.release }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          path: OpenJK
+          fetch-depth: 1
+
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app | grep -iv beta | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install build tools
+        run: |
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          cmake --version | head -1
+          ninja --version
+
+      - name: Build Jedi Outcast (OpenJO)
+        env:
+          IOS_PACKAGE: ipa
+          IOS_VERSION: ${{ inputs.release != '' && inputs.release || '0.0.1' }}
+          IOS_BUILD_NUMBER: ${{ github.run_number }}
+        run: OpenJK/ios/build.sh device jo
+
+      - name: Build Jedi Academy (OpenJA)
+        env:
+          IOS_PACKAGE: ipa
+          IOS_VERSION: ${{ inputs.release != '' && inputs.release || '0.0.1' }}
+          IOS_BUILD_NUMBER: ${{ github.run_number }}
+        run: OpenJK/ios/build.sh device ja
+
+      - name: Check the IPAs
+        run: |
+          set -e
+          cd build/ipa
+          ls -la *.ipa
+          for n in OpenJO OpenJA; do
+            plutil -p $n/Payload/$n.app/Info.plist | grep -E 'CFBundleIdentifier|CFBundleExecutable|CFBundleShortVersionString|MinimumOSVersion|CFBundleSupportedPlatforms' -A1 | grep -v '^--'
+            ls $n/Payload/$n.app
+            for f in $n/Payload/$n.app/*.arm64 $n/Payload/$n.app/*.dylib; do
+              lipo -archs "$f"
+              otool -l "$f" | grep -A4 LC_BUILD_VERSION | grep -E 'platform|minos'
+            done
+            # No game data in the app (assets*.pk3 and the like)
+            if find $n/Payload -iname '*.pk3' -o -iname '*.roq' | grep -q .; then
+              echo "game data found in $n" >&2; exit 1
+            fi
+          done
+
+      - name: Upload IPAs
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenJK-iOS-unsigned-ipa
+          path: build/ipa/*.ipa
+          if-no-files-found: error
+
+      - name: Publish prerelease for the tag
+        if: env.RELEASE_TAG != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: OpenJK for iOS ${{ env.RELEASE_TAG }}
+          body_path: OpenJK/ios/RELEASE_NOTES.md
+          prerelease: true
+          make_latest: false
+          files: |
+            build/ipa/OpenJO-iOS-unsigned.ipa
+            build/ipa/OpenJA-iOS-unsigned.ipa
+          fail_on_unmatched_files: true
